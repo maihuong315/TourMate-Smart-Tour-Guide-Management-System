@@ -2,16 +2,16 @@ import streamlit as st
 import pymysql
 import pandas as pd
 
-from datetime import date, datetime, time, timedelta
 from pymysql.cursors import DictCursor
+from datetime import date, datetime, time, timedelta
 
 
 # ============================================================
-# 1. CẤU HÌNH TRANG
+# 1. PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="TourMate - Smart Tour Guide",
+    page_title="TourMate",
     page_icon="🧭",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -25,18 +25,19 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+
     .main {
-        background: #f6f8fb;
+        background: #f5f7fb;
     }
 
     .block-container {
-        padding-top: 1.2rem;
-        padding-bottom: 2rem;
         max-width: 1500px;
+        padding-top: 1.2rem;
+        padding-bottom: 3rem;
     }
 
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f172a 0%, #172554 100%);
+        background: linear-gradient(180deg, #0f172a, #172554);
     }
 
     [data-testid="stSidebar"] * {
@@ -44,99 +45,40 @@ st.markdown(
     }
 
     .hero {
-        padding: 28px 30px;
-        border-radius: 20px;
         background: linear-gradient(135deg, #0f766e, #2563eb);
         color: white;
-        margin-bottom: 24px;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+        padding: 30px;
+        border-radius: 22px;
+        margin-bottom: 25px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.12);
     }
 
     .hero h1 {
         margin: 0;
-        font-size: 36px;
+        font-size: 38px;
     }
 
     .hero p {
         margin-top: 8px;
+        opacity: .9;
         font-size: 16px;
-        opacity: 0.9;
     }
 
-    .metric-card {
+    .card {
+        background: white;
         padding: 20px;
         border-radius: 16px;
-        background: white;
         border: 1px solid #e5e7eb;
-        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
-    }
-
-    .metric-title {
-        color: #64748b;
-        font-size: 14px;
-    }
-
-    .metric-value {
-        font-size: 30px;
-        font-weight: 700;
-        color: #0f172a;
-        margin-top: 5px;
+        box-shadow: 0 5px 15px rgba(0,0,0,.04);
     }
 
     .section-title {
-        font-size: 24px;
+        font-size: 25px;
         font-weight: 700;
-        color: #0f172a;
         margin-top: 20px;
-        margin-bottom: 12px;
+        margin-bottom: 15px;
     }
 
-    .tour-card {
-        background: white;
-        border-radius: 16px;
-        padding: 18px;
-        border: 1px solid #e5e7eb;
-        margin-bottom: 12px;
-    }
-
-    .status-active {
-        color: #166534;
-        background: #dcfce7;
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-
-    .status-pending {
-        color: #92400e;
-        background: #fef3c7;
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-
-    .status-cancelled {
-        color: #991b1b;
-        background: #fee2e2;
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-
-    .small-muted {
-        color: #64748b;
-        font-size: 13px;
-    }
-
-    div[data-testid="stMetric"] {
-        background: white;
-        padding: 15px;
-        border-radius: 15px;
-        border: 1px solid #e5e7eb;
-    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -144,7 +86,7 @@ st.markdown(
 
 
 # ============================================================
-# 3. THÔNG TIN MYSQL AIVEN
+# 3. AIVEN MYSQL
 # ============================================================
 
 MYSQL_CONFIG = {
@@ -152,7 +94,10 @@ MYSQL_CONFIG = {
     "port": 27942,
     "user": "avnadmin",
 
+    # ========================================================
     # DÁN MẬT KHẨU AIVEN CỦA EM VÀO ĐÂY
+    # ========================================================
+
     "password": "AVNS_zBDlzsF9I5fC-EdWcl0",
 
     "database": "defaultdb",
@@ -166,23 +111,28 @@ MYSQL_CONFIG = {
 
 
 # ============================================================
-# 4. KẾT NỐI DATABASE
+# 4. DATABASE FUNCTIONS
 # ============================================================
 
 def get_conn():
-    if not MYSQL_CONFIG["password"] or MYSQL_CONFIG["password"] == "YOUR_AIVEN_PASSWORD":
+
+    if (
+        not MYSQL_CONFIG["password"]
+        or MYSQL_CONFIG["password"] == "YOUR_AIVEN_PASSWORD"
+    ):
         raise RuntimeError(
-            "Chưa nhập mật khẩu Aiven. "
-            "Hãy sửa MYSQL_CONFIG['password'] trong app.py."
+            "Chưa nhập mật khẩu Aiven trong MYSQL_CONFIG."
         )
 
     return pymysql.connect(**MYSQL_CONFIG)
 
 
 def execute(sql, params=()):
+
     conn = None
 
     try:
+
         conn = get_conn()
 
         with conn.cursor() as cursor:
@@ -191,6 +141,7 @@ def execute(sql, params=()):
         conn.commit()
 
     except pymysql.MySQLError as e:
+
         code = e.args[0] if e.args else "UNKNOWN"
         message = e.args[1] if len(e.args) > 1 else str(e)
 
@@ -199,21 +150,27 @@ def execute(sql, params=()):
         )
 
     finally:
+
         if conn:
             conn.close()
 
 
 def query(sql, params=()):
+
     conn = None
 
     try:
+
         conn = get_conn()
 
         with conn.cursor() as cursor:
+
             cursor.execute(sql, params)
+
             return cursor.fetchall()
 
     except pymysql.MySQLError as e:
+
         code = e.args[0] if e.args else "UNKNOWN"
         message = e.args[1] if len(e.args) > 1 else str(e)
 
@@ -222,11 +179,13 @@ def query(sql, params=()):
         )
 
     finally:
+
         if conn:
             conn.close()
 
 
 def query_one(sql, params=()):
+
     rows = query(sql, params)
 
     if rows:
@@ -236,223 +195,845 @@ def query_one(sql, params=()):
 
 
 def query_df(sql, params=()):
+
     rows = query(sql, params)
 
     return pd.DataFrame(rows)
 
 
 # ============================================================
-# 5. HIỂN THỊ LỖI DATABASE
+# 5. DATABASE INFORMATION
 # ============================================================
 
-def safe_database_call(func, *args, **kwargs):
-    try:
-        return func(*args, **kwargs)
+def table_exists(table_name):
 
-    except Exception as e:
-        st.error("❌ Có lỗi khi làm việc với MySQL")
-        st.code(str(e))
+    result = query_one(
+        """
+        SELECT COUNT(*) AS total
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = %s
+        """,
+        (table_name,),
+    )
 
-        st.info(
-            "Nếu lỗi liên quan đến database, hãy vào "
-            "Cài đặt → Kiểm tra Database để xem chi tiết."
-        )
+    return result["total"] > 0
 
-        return None
+
+def get_columns(table_name):
+
+    rows = query(
+        """
+        SELECT
+            COLUMN_NAME,
+            IS_NULLABLE,
+            COLUMN_DEFAULT,
+            DATA_TYPE,
+            COLUMN_TYPE
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = %s
+        ORDER BY ORDINAL_POSITION
+        """,
+        (table_name,),
+    )
+
+    return rows
+
+
+def column_names(table_name):
+
+    return [
+        row["COLUMN_NAME"]
+        for row in get_columns(table_name)
+    ]
 
 
 # ============================================================
-# 6. KIỂM TRA DATABASE
+# 6. DATABASE CONNECTION TEST
 # ============================================================
 
 def database_test():
+
     conn = None
 
     try:
+
         conn = get_conn()
 
         with conn.cursor() as cursor:
-            cursor.execute("SELECT VERSION() AS version")
+
+            cursor.execute(
+                "SELECT VERSION() AS version"
+            )
+
             version = cursor.fetchone()
 
-            cursor.execute("SELECT DATABASE() AS database_name")
-            database = cursor.fetchone()
+            cursor.execute(
+                "SELECT DATABASE() AS db"
+            )
 
-            cursor.execute("SELECT CURRENT_USER() AS db_user")
+            db = cursor.fetchone()
+
+            cursor.execute(
+                "SELECT CURRENT_USER() AS db_user"
+            )
+
             user = cursor.fetchone()
 
         return {
             "version": version["version"],
-            "database": database["database_name"],
+            "database": db["db"],
             "user": user["db_user"],
-            "connected": True,
         }
 
     finally:
+
         if conn:
             conn.close()
 
 
 # ============================================================
-# 7. TẠO DATABASE
+# 7. SAFE ADD COLUMN
 # ============================================================
 
-def init_db():
+def add_column_if_missing(
+    table_name,
+    column_name,
+    definition
+):
 
-    tables = [
+    cols = column_names(table_name)
 
-        # ----------------------------------------------------
-        # GUIDES
-        # ----------------------------------------------------
+    if column_name in cols:
+        return
 
+    try:
+
+        execute(
+            f"""
+            ALTER TABLE `{table_name}`
+            ADD COLUMN `{column_name}` {definition}
+            """
+        )
+
+    except RuntimeError as e:
+
+        # Nếu một instance khác vừa tạo column
+        if "1060" in str(e):
+            return
+
+        raise
+
+
+# ============================================================
+# 8. CREATE TABLES
+# ============================================================
+
+def create_base_tables():
+
+    execute(
         """
         CREATE TABLE IF NOT EXISTS guides (
+
             id INT AUTO_INCREMENT PRIMARY KEY,
+
             name VARCHAR(150) NOT NULL,
+
             phone VARCHAR(30),
+
             email VARCHAR(150),
-            language VARCHAR(100),
+
+            language VARCHAR(150),
+
             experience_years INT DEFAULT 0,
+
             status VARCHAR(30) DEFAULT 'Active',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+            created_at TIMESTAMP
+            DEFAULT CURRENT_TIMESTAMP
+
         )
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # TOURS
-        # ----------------------------------------------------
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS tours (
+
             id INT AUTO_INCREMENT PRIMARY KEY,
+
             code VARCHAR(50) UNIQUE NOT NULL,
+
             name VARCHAR(255) NOT NULL,
+
             guide_id INT,
+
             start_date DATE NOT NULL,
+
             end_date DATE NOT NULL,
+
             start_time TIME,
+
             pickup_location VARCHAR(255),
+
             hotel VARCHAR(255),
+
             vehicle VARCHAR(255),
+
             driver VARCHAR(150),
+
             total_guests INT DEFAULT 0,
-            status VARCHAR(30) DEFAULT 'Scheduled',
+
+            status VARCHAR(30)
+            DEFAULT 'Scheduled',
+
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+            created_at TIMESTAMP
+            DEFAULT CURRENT_TIMESTAMP
+
         )
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # ITINERARY
-        # ----------------------------------------------------
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS itinerary (
+
             id INT AUTO_INCREMENT PRIMARY KEY,
+
             tour_id INT NOT NULL,
+
             tour_date DATE NOT NULL,
+
             time TIME,
+
             place VARCHAR(255) NOT NULL,
+
             activity TEXT,
+
             transport VARCHAR(100),
+
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+            created_at TIMESTAMP
+            DEFAULT CURRENT_TIMESTAMP
+
         )
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # GUESTS
-        # ----------------------------------------------------
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS guests (
+
             id INT AUTO_INCREMENT PRIMARY KEY,
+
             tour_id INT NOT NULL,
+
             full_name VARCHAR(150) NOT NULL,
+
             gender VARCHAR(30),
+
             age INT,
+
             nationality VARCHAR(100),
+
             phone VARCHAR(50),
+
             room_number VARCHAR(50),
+
             special_request TEXT,
-            attendance VARCHAR(30) DEFAULT 'Present',
+
+            attendance VARCHAR(30)
+            DEFAULT 'Present',
+
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+            created_at TIMESTAMP
+            DEFAULT CURRENT_TIMESTAMP
+
         )
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # TASKS
-        # ----------------------------------------------------
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS tasks (
+
             id INT AUTO_INCREMENT PRIMARY KEY,
+
             tour_id INT,
+
             task_name VARCHAR(255) NOT NULL,
+
             task_type VARCHAR(100),
+
             due_date DATE,
+
             due_time TIME,
+
             assigned_to VARCHAR(150),
+
             done BOOLEAN DEFAULT FALSE,
+
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+            created_at TIMESTAMP
+            DEFAULT CURRENT_TIMESTAMP
+
         )
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # PLACES
-        # ----------------------------------------------------
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS places (
+
             id INT AUTO_INCREMENT PRIMARY KEY,
+
             name VARCHAR(255) NOT NULL,
+
             location VARCHAR(255),
+
             category VARCHAR(100),
+
             introduction TEXT,
+
             history TEXT,
+
             highlights TEXT,
+
             tips TEXT,
+
             image_url TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+            created_at TIMESTAMP
+            DEFAULT CURRENT_TIMESTAMP
+
         )
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # INCIDENTS
-        # ----------------------------------------------------
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS incidents (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            tour_id INT,
-            incident_date DATE,
-            incident_time TIME,
-            type VARCHAR(100),
-            title VARCHAR(255) NOT NULL,
-            description TEXT,
-            solution TEXT,
-            status VARCHAR(30) DEFAULT 'Open',
-            created_by VARCHAR(150),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    ]
 
-    for sql in tables:
-        execute(sql)
+            id INT AUTO_INCREMENT PRIMARY KEY,
+
+            tour_id INT,
+
+            incident_date DATE,
+
+            incident_time TIME,
+
+            type VARCHAR(100),
+
+            title VARCHAR(255) NOT NULL,
+
+            description TEXT,
+
+            solution TEXT,
+
+            status VARCHAR(30)
+            DEFAULT 'Open',
+
+            created_by VARCHAR(150),
+
+            created_at TIMESTAMP
+            DEFAULT CURRENT_TIMESTAMP
+
+        )
+        """
+    )
 
 
 # ============================================================
-# 8. DỮ LIỆU DEMO
+# 9. FIX DATABASE CŨ
+# ============================================================
+
+def repair_old_database():
+
+    # ========================================================
+    # FIX TOURS
+    # ========================================================
+
+    if table_exists("tours"):
+
+        cols = column_names("tours")
+
+        # ----------------------------------------------------
+        # TRƯỜNG HỢP DATABASE CŨ CÓ tour_name
+        # ----------------------------------------------------
+
+        if "tour_name" in cols and "name" not in cols:
+
+            try:
+
+                execute(
+                    """
+                    ALTER TABLE tours
+                    CHANGE COLUMN tour_name
+                    name VARCHAR(255) NOT NULL
+                    """
+                )
+
+            except RuntimeError:
+
+                # Nếu rename không được,
+                # tạo name mới và copy dữ liệu
+                add_column_if_missing(
+                    "tours",
+                    "name",
+                    "VARCHAR(255)"
+                )
+
+                execute(
+                    """
+                    UPDATE tours
+                    SET name = tour_name
+                    WHERE name IS NULL
+                    """
+                )
+
+        elif "tour_name" in cols and "name" in cols:
+
+            # Có cả hai cột.
+            # Đồng bộ name từ tour_name nếu name trống.
+
+            try:
+
+                execute(
+                    """
+                    UPDATE tours
+                    SET name = tour_name
+                    WHERE
+                        (name IS NULL OR name = '')
+                        AND tour_name IS NOT NULL
+                    """
+                )
+
+            except Exception:
+                pass
+
+
+        # ----------------------------------------------------
+        # ĐẢM BẢO CÁC CỘT MỚI
+        # ----------------------------------------------------
+
+        add_column_if_missing(
+            "tours",
+            "name",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "guide_id",
+            "INT"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "start_date",
+            "DATE"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "end_date",
+            "DATE"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "start_time",
+            "TIME"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "pickup_location",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "hotel",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "vehicle",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "driver",
+            "VARCHAR(150)"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "total_guests",
+            "INT DEFAULT 0"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "status",
+            "VARCHAR(30) DEFAULT 'Scheduled'"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "notes",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "tours",
+            "created_at",
+            "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        )
+
+
+    # ========================================================
+    # GUIDES
+    # ========================================================
+
+    if table_exists("guides"):
+
+        add_column_if_missing(
+            "guides",
+            "phone",
+            "VARCHAR(30)"
+        )
+
+        add_column_if_missing(
+            "guides",
+            "email",
+            "VARCHAR(150)"
+        )
+
+        add_column_if_missing(
+            "guides",
+            "language",
+            "VARCHAR(150)"
+        )
+
+        add_column_if_missing(
+            "guides",
+            "experience_years",
+            "INT DEFAULT 0"
+        )
+
+        add_column_if_missing(
+            "guides",
+            "status",
+            "VARCHAR(30) DEFAULT 'Active'"
+        )
+
+
+    # ========================================================
+    # ITINERARY
+    # ========================================================
+
+    if table_exists("itinerary"):
+
+        add_column_if_missing(
+            "itinerary",
+            "tour_id",
+            "INT"
+        )
+
+        add_column_if_missing(
+            "itinerary",
+            "tour_date",
+            "DATE"
+        )
+
+        add_column_if_missing(
+            "itinerary",
+            "time",
+            "TIME"
+        )
+
+        add_column_if_missing(
+            "itinerary",
+            "place",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "itinerary",
+            "activity",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "itinerary",
+            "transport",
+            "VARCHAR(100)"
+        )
+
+        add_column_if_missing(
+            "itinerary",
+            "notes",
+            "TEXT"
+        )
+
+
+    # ========================================================
+    # GUESTS
+    # ========================================================
+
+    if table_exists("guests"):
+
+        add_column_if_missing(
+            "guests",
+            "tour_id",
+            "INT"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "full_name",
+            "VARCHAR(150)"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "gender",
+            "VARCHAR(30)"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "age",
+            "INT"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "nationality",
+            "VARCHAR(100)"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "phone",
+            "VARCHAR(50)"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "room_number",
+            "VARCHAR(50)"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "special_request",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "attendance",
+            "VARCHAR(30) DEFAULT 'Present'"
+        )
+
+        add_column_if_missing(
+            "guests",
+            "notes",
+            "TEXT"
+        )
+
+
+    # ========================================================
+    # TASKS
+    # ========================================================
+
+    if table_exists("tasks"):
+
+        add_column_if_missing(
+            "tasks",
+            "tour_id",
+            "INT"
+        )
+
+        add_column_if_missing(
+            "tasks",
+            "task_name",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "tasks",
+            "task_type",
+            "VARCHAR(100)"
+        )
+
+        add_column_if_missing(
+            "tasks",
+            "due_date",
+            "DATE"
+        )
+
+        add_column_if_missing(
+            "tasks",
+            "due_time",
+            "TIME"
+        )
+
+        add_column_if_missing(
+            "tasks",
+            "assigned_to",
+            "VARCHAR(150)"
+        )
+
+        add_column_if_missing(
+            "tasks",
+            "done",
+            "BOOLEAN DEFAULT FALSE"
+        )
+
+        add_column_if_missing(
+            "tasks",
+            "notes",
+            "TEXT"
+        )
+
+
+    # ========================================================
+    # PLACES
+    # ========================================================
+
+    if table_exists("places"):
+
+        add_column_if_missing(
+            "places",
+            "location",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "places",
+            "category",
+            "VARCHAR(100)"
+        )
+
+        add_column_if_missing(
+            "places",
+            "introduction",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "places",
+            "history",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "places",
+            "highlights",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "places",
+            "tips",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "places",
+            "image_url",
+            "TEXT"
+        )
+
+
+    # ========================================================
+    # INCIDENTS
+    # ========================================================
+
+    if table_exists("incidents"):
+
+        add_column_if_missing(
+            "incidents",
+            "tour_id",
+            "INT"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "incident_date",
+            "DATE"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "incident_time",
+            "TIME"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "type",
+            "VARCHAR(100)"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "title",
+            "VARCHAR(255)"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "description",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "solution",
+            "TEXT"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "status",
+            "VARCHAR(30) DEFAULT 'Open'"
+        )
+
+        add_column_if_missing(
+            "incidents",
+            "created_by",
+            "VARCHAR(150)"
+        )
+
+
+# ============================================================
+# 10. DEMO DATA
 # ============================================================
 
 def seed_demo_data():
 
-    # --------------------------------------------------------
+    # ========================================================
     # GUIDE
-    # --------------------------------------------------------
+    # ========================================================
 
     guide = query_one(
         """
@@ -461,7 +1042,7 @@ def seed_demo_data():
         WHERE email = %s
         LIMIT 1
         """,
-        ("huong.demo@tourmate.vn",),
+        ("demo@tourmate.vn",),
     )
 
     if not guide:
@@ -483,7 +1064,7 @@ def seed_demo_data():
             (
                 "Nguyễn Minh Anh",
                 "0901234567",
-                "huong.demo@tourmate.vn",
+                "demo@tourmate.vn",
                 "Vietnamese, English",
                 4,
                 "Active",
@@ -497,54 +1078,15 @@ def seed_demo_data():
             WHERE email = %s
             LIMIT 1
             """,
-            ("huong.demo@tourmate.vn",),
+            ("demo@tourmate.vn",),
         )
 
     guide_id = guide["id"]
 
-    # --------------------------------------------------------
-    # SECOND GUIDE
-    # --------------------------------------------------------
 
-    guide2 = query_one(
-        """
-        SELECT id
-        FROM guides
-        WHERE email = %s
-        LIMIT 1
-        """,
-        ("guide2@tourmate.vn",),
-    )
-
-    if not guide2:
-
-        execute(
-            """
-            INSERT INTO guides
-            (
-                name,
-                phone,
-                email,
-                language,
-                experience_years,
-                status
-            )
-            VALUES
-            (%s,%s,%s,%s,%s,%s)
-            """,
-            (
-                "Trần Quốc Huy",
-                "0912345678",
-                "guide2@tourmate.vn",
-                "Vietnamese, English, Chinese",
-                7,
-                "Active",
-            ),
-        )
-
-    # --------------------------------------------------------
-    # TOUR DEMO
-    # --------------------------------------------------------
+    # ========================================================
+    # TOUR 1
+    # ========================================================
 
     tour = query_one(
         """
@@ -590,12 +1132,12 @@ def seed_demo_data():
                 end,
                 time(7, 30),
                 "Khách sạn Imperial Vũng Tàu",
-                "The Imperial Hotel Vũng Tàu",
-                "29-seat tourist bus",
+                "The Imperial Hotel",
+                "29-seat Tourist Bus",
                 "Lê Văn Nam",
                 20,
                 "Scheduled",
-                "Tour demo cho hệ thống TourMate.",
+                "Tour demo Vũng Tàu.",
             ),
         )
 
@@ -611,9 +1153,10 @@ def seed_demo_data():
 
     tour_id = tour["id"]
 
-    # --------------------------------------------------------
+
+    # ========================================================
     # TOUR 2
-    # --------------------------------------------------------
+    # ========================================================
 
     tour2 = query_one(
         """
@@ -659,32 +1202,21 @@ def seed_demo_data():
                 end2,
                 time(6, 30),
                 "Bến xe Vũng Tàu",
-                "Terracotta Hotel & Resort",
-                "45-seat tourist bus",
+                "Terracotta Hotel",
+                "45-seat Tourist Bus",
                 "Phạm Văn Bình",
                 32,
                 "Scheduled",
-                "Tour mẫu Đà Lạt.",
+                "Tour demo Đà Lạt.",
             ),
         )
 
-        tour2 = query_one(
-            """
-            SELECT id
-            FROM tours
-            WHERE code = %s
-            LIMIT 1
-            """,
-            ("TM-DL-002",),
-        )
 
-    tour2_id = tour2["id"]
-
-    # --------------------------------------------------------
+    # ========================================================
     # ITINERARY
-    # --------------------------------------------------------
+    # ========================================================
 
-    itinerary_count = query_one(
+    count = query_one(
         """
         SELECT COUNT(*) AS total
         FROM itinerary
@@ -693,18 +1225,20 @@ def seed_demo_data():
         (tour_id,),
     )["total"]
 
-    if itinerary_count == 0:
+    if count == 0:
 
-        itinerary_data = [
+        data = [
+
             (
                 tour_id,
                 date.today(),
                 time(8, 0),
                 "Bãi Sau",
-                "Đón khách và giới thiệu chương trình tour.",
+                "Đón khách và giới thiệu chương trình.",
                 "Bus",
-                "Kiểm tra đủ khách trước khi xuất phát.",
+                "Kiểm tra đủ khách.",
             ),
+
             (
                 tour_id,
                 date.today(),
@@ -712,8 +1246,9 @@ def seed_demo_data():
                 "Tượng Chúa Kitô Vua",
                 "Tham quan và chụp ảnh.",
                 "Bus",
-                "Nhắc khách mang nước uống.",
+                "Nhắc khách mang nước.",
             ),
+
             (
                 tour_id,
                 date.today(),
@@ -721,8 +1256,9 @@ def seed_demo_data():
                 "Nhà hàng Gành Hào",
                 "Ăn trưa.",
                 "Bus",
-                "Kiểm tra số lượng suất ăn.",
+                "Kiểm tra suất ăn.",
             ),
+
             (
                 tour_id,
                 date.today(),
@@ -730,20 +1266,12 @@ def seed_demo_data():
                 "Hải đăng Vũng Tàu",
                 "Tham quan và thuyết minh.",
                 "Bus",
-                "Theo dõi thời gian đoàn.",
+                "Theo dõi thời gian.",
             ),
-            (
-                tour_id,
-                date.today() + timedelta(days=1),
-                time(8, 30),
-                "Hồ Mây Park",
-                "Vui chơi và tham quan.",
-                "Bus",
-                "Tập trung khách đúng giờ.",
-            ),
+
         ]
 
-        for item in itinerary_data:
+        for item in data:
 
             execute(
                 """
@@ -763,11 +1291,12 @@ def seed_demo_data():
                 item,
             )
 
-    # --------------------------------------------------------
-    # GUESTS
-    # --------------------------------------------------------
 
-    guest_count = query_one(
+    # ========================================================
+    # GUESTS
+    # ========================================================
+
+    count = query_one(
         """
         SELECT COUNT(*) AS total
         FROM guests
@@ -776,18 +1305,58 @@ def seed_demo_data():
         (tour_id,),
     )["total"]
 
-    if guest_count == 0:
+    if count == 0:
 
         guests = [
-            ("Nguyễn Văn An", "Male", 31, "Vietnam", "0901111111", "101"),
-            ("Trần Thị Lan", "Female", 28, "Vietnam", "0902222222", "102"),
-            ("John Smith", "Male", 35, "United States", "0903333333", "103"),
-            ("Emily Brown", "Female", 29, "United Kingdom", "0904444444", "104"),
-            ("Sophie Martin", "Female", 32, "France", "0905555555", "105"),
-            ("Lê Minh Tuấn", "Male", 25, "Vietnam", "0906666666", "106"),
+
+            (
+                "Nguyễn Văn An",
+                "Male",
+                31,
+                "Vietnam",
+                "0901111111",
+                "101",
+            ),
+
+            (
+                "Trần Thị Lan",
+                "Female",
+                28,
+                "Vietnam",
+                "0902222222",
+                "102",
+            ),
+
+            (
+                "John Smith",
+                "Male",
+                35,
+                "United States",
+                "0903333333",
+                "103",
+            ),
+
+            (
+                "Emily Brown",
+                "Female",
+                29,
+                "United Kingdom",
+                "0904444444",
+                "104",
+            ),
+
+            (
+                "Sophie Martin",
+                "Female",
+                32,
+                "France",
+                "0905555555",
+                "105",
+            ),
+
         ]
 
-        for guest in guests:
+        for g in guests:
 
             execute(
                 """
@@ -807,21 +1376,22 @@ def seed_demo_data():
                 """,
                 (
                     tour_id,
-                    guest[0],
-                    guest[1],
-                    guest[2],
-                    guest[3],
-                    guest[4],
-                    guest[5],
+                    g[0],
+                    g[1],
+                    g[2],
+                    g[3],
+                    g[4],
+                    g[5],
                     "Present",
                 ),
             )
 
-    # --------------------------------------------------------
-    # TASKS
-    # --------------------------------------------------------
 
-    task_count = query_one(
+    # ========================================================
+    # TASKS
+    # ========================================================
+
+    count = query_one(
         """
         SELECT COUNT(*) AS total
         FROM tasks
@@ -830,9 +1400,10 @@ def seed_demo_data():
         (tour_id,),
     )["total"]
 
-    if task_count == 0:
+    if count == 0:
 
         tasks = [
+
             (
                 "Kiểm tra Arrival List",
                 "Pre-tour",
@@ -840,8 +1411,8 @@ def seed_demo_data():
                 time(6, 30),
                 "Nguyễn Minh Anh",
                 1,
-                "Kiểm tra danh sách khách.",
             ),
+
             (
                 "Chuẩn bị nước uống",
                 "Preparation",
@@ -849,17 +1420,17 @@ def seed_demo_data():
                 time(6, 45),
                 "Nguyễn Minh Anh",
                 1,
-                "",
             ),
+
             (
                 "Kiểm tra xe",
                 "Transport",
                 date.today(),
                 time(7, 0),
                 "Lê Văn Nam",
-                1,
-                "",
+                0,
             ),
+
             (
                 "Điểm danh khách",
                 "Guest",
@@ -867,17 +1438,8 @@ def seed_demo_data():
                 time(7, 30),
                 "Nguyễn Minh Anh",
                 0,
-                "",
             ),
-            (
-                "Gửi feedback form",
-                "Post-tour",
-                date.today() + timedelta(days=2),
-                time(18, 0),
-                "Nguyễn Minh Anh",
-                0,
-                "",
-            ),
+
         ]
 
         for task in tasks:
@@ -892,11 +1454,10 @@ def seed_demo_data():
                     due_date,
                     due_time,
                     assigned_to,
-                    done,
-                    notes
+                    done
                 )
                 VALUES
-                (%s,%s,%s,%s,%s,%s,%s,%s)
+                (%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     tour_id,
@@ -906,58 +1467,60 @@ def seed_demo_data():
                     task[3],
                     task[4],
                     task[5],
-                    task[6],
                 ),
             )
 
-    # --------------------------------------------------------
+
+    # ========================================================
     # PLACES
-    # --------------------------------------------------------
+    # ========================================================
 
     places = [
+
         (
             "Tượng Chúa Kitô Vua",
             "Vũng Tàu",
-            "Religious / Landmark",
-            "Tượng Chúa Kitô Vua là một trong những biểu tượng nổi bật của Vũng Tàu.",
-            "Công trình nằm trên Núi Nhỏ và là điểm tham quan nổi tiếng của thành phố.",
-            "Tượng lớn, góc nhìn thành phố và biển, cảnh quan đẹp.",
-            "Nên đi giày thoải mái và chuẩn bị nước uống.",
-            "https://images.unsplash.com/photo-1500534623283-312aade485b7?w=1200",
+            "Landmark",
+            "Một trong những biểu tượng nổi bật của Vũng Tàu.",
+            "Công trình nằm trên Núi Nhỏ.",
+            "Tầm nhìn thành phố và biển.",
+            "Nên mang nước uống.",
         ),
+
         (
             "Hải đăng Vũng Tàu",
-            "Núi Nhỏ, Vũng Tàu",
+            "Núi Nhỏ",
             "Landmark",
-            "Hải đăng Vũng Tàu là địa điểm có tầm nhìn đẹp ra biển và thành phố.",
-            "Ngọn hải đăng là một công trình hàng hải lâu đời của khu vực.",
-            "Check-in, ngắm biển, chụp ảnh.",
-            "Nên đến vào sáng sớm hoặc chiều mát.",
-            "https://images.unsplash.com/photo-1498307833015-e7b400441eb8?w=1200",
+            "Địa điểm nổi tiếng với góc nhìn rộng ra biển.",
+            "Một công trình hàng hải lâu đời.",
+            "Ngắm biển và chụp ảnh.",
+            "Nên đến sáng sớm hoặc chiều.",
         ),
+
         (
             "Bãi Sau",
             "Vũng Tàu",
             "Beach",
-            "Bãi Sau là một trong những bãi biển nổi tiếng nhất tại Vũng Tàu.",
-            "Khu vực phát triển mạnh về du lịch nghỉ dưỡng và dịch vụ biển.",
-            "Tắm biển, đi dạo, ngắm bình minh.",
-            "Theo dõi thời tiết và thủy triều.",
-            "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200",
+            "Một trong những bãi biển nổi tiếng của thành phố.",
+            "Khu vực phát triển mạnh về du lịch.",
+            "Tắm biển và ngắm bình minh.",
+            "Theo dõi thời tiết.",
         ),
+
         (
             "Hồ Mây Park",
             "Vũng Tàu",
             "Entertainment",
-            "Khu du lịch Hồ Mây nằm trên Núi Lớn.",
-            "Khu du lịch kết hợp thiên nhiên và các hoạt động vui chơi.",
-            "Cáp treo, vui chơi, ngắm cảnh.",
-            "Nên dành ít nhất nửa ngày.",
-            "https://images.unsplash.com/photo-1513883049090-d0b7439799bf?w=1200",
+            "Khu vui chơi và nghỉ dưỡng trên Núi Lớn.",
+            "Khu du lịch kết hợp thiên nhiên và vui chơi.",
+            "Cáp treo, vui chơi và ngắm cảnh.",
+            "Nên dành nửa ngày.",
         ),
+
     ]
 
-    for place in places:
+
+    for p in places:
 
         exists = query_one(
             """
@@ -966,7 +1529,7 @@ def seed_demo_data():
             WHERE name = %s
             LIMIT 1
             """,
-            (place[0],),
+            (p[0],),
         )
 
         if not exists:
@@ -981,20 +1544,20 @@ def seed_demo_data():
                     introduction,
                     history,
                     highlights,
-                    tips,
-                    image_url
+                    tips
                 )
                 VALUES
-                (%s,%s,%s,%s,%s,%s,%s,%s)
+                (%s,%s,%s,%s,%s,%s,%s)
                 """,
-                place,
+                p,
             )
 
-    # --------------------------------------------------------
-    # INCIDENT
-    # --------------------------------------------------------
 
-    incident_exists = query_one(
+    # ========================================================
+    # INCIDENT
+    # ========================================================
+
+    incident = query_one(
         """
         SELECT id
         FROM incidents
@@ -1004,7 +1567,7 @@ def seed_demo_data():
         ("Khách quên hành lý trên xe",),
     )
 
-    if not incident_exists:
+    if not incident:
 
         execute(
             """
@@ -1029,8 +1592,8 @@ def seed_demo_data():
                 time(15, 30),
                 "Lost & Found",
                 "Khách quên hành lý trên xe",
-                "Một khách phát hiện thiếu túi xách sau khi xuống xe.",
-                "Liên hệ tài xế kiểm tra xe và đã tìm thấy túi.",
+                "Khách phát hiện thiếu túi xách.",
+                "Liên hệ tài xế kiểm tra và đã tìm thấy.",
                 "Resolved",
                 "Nguyễn Minh Anh",
             ),
@@ -1038,45 +1601,61 @@ def seed_demo_data():
 
 
 # ============================================================
-# 9. KHỞI ĐỘNG DATABASE
+# 11. START SYSTEM
 # ============================================================
-
-db_ready = False
 
 try:
 
     database_test()
-    init_db()
-    seed_demo_data()
 
-    db_ready = True
+    create_base_tables()
+
+    repair_old_database()
+
+    seed_demo_data()
 
 except Exception as e:
 
-    st.error("❌ Không thể khởi động hệ thống database.")
+    st.error(
+        "❌ Không thể khởi động hệ thống database."
+    )
 
-    st.code(str(e))
+    st.code(
+        str(e),
+        language="text",
+    )
 
-    st.warning(
-        "Kiểm tra lại Host, Port, User, Password Aiven "
-        "và quyền truy cập MySQL."
+    st.info(
+        """
+        Kết nối MySQL đã được kiểm tra trước khi khởi tạo.
+
+        Nếu xuất hiện lỗi SQL mới, hãy gửi nguyên dòng
+        MySQL Error cho anh.
+        """
     )
 
     st.stop()
 
 
 # ============================================================
-# 10. HEADER
+# 12. HEADER
 # ============================================================
 
 st.markdown(
     """
     <div class="hero">
+
         <h1>🧭 TourMate</h1>
+
         <p>
-            Smart Tour Guide Management System —
-            Hệ thống quản lý tour dành cho hướng dẫn viên du lịch
+        Smart Tour Guide Management System
         </p>
+
+        <p>
+        Quản lý tour • Lịch trình • Khách hàng • Checklist
+        • Điểm tham quan • Sự cố • Hướng dẫn viên
+        </p>
+
     </div>
     """,
     unsafe_allow_html=True,
@@ -1084,15 +1663,23 @@ st.markdown(
 
 
 # ============================================================
-# 11. SIDEBAR
+# 13. SIDEBAR
 # ============================================================
 
 st.sidebar.markdown(
     """
-    <div style="text-align:center; padding:10px;">
-        <div style="font-size:48px;">🧭</div>
+    <div style="text-align:center">
+
+        <div style="font-size:55px">
+        🧭
+        </div>
+
         <h2>TourMate</h2>
-        <p style="font-size:13px;">Smart Tour Guide System</p>
+
+        <p>
+        Smart Tour Guide
+        </p>
+
     </div>
     """,
     unsafe_allow_html=True,
@@ -1114,54 +1701,37 @@ menu = st.sidebar.radio(
     ],
 )
 
-
 st.sidebar.markdown("---")
 
-st.sidebar.success("🟢 MySQL: Connected")
+st.sidebar.success(
+    "🟢 MySQL Connected"
+)
 
 st.sidebar.caption(
-    f"Ngày: {date.today().strftime('%d/%m/%Y')}"
+    "TourMate v1.0"
 )
 
 
 # ============================================================
-# 12. DASHBOARD
+# 14. DASHBOARD
 # ============================================================
 
 if menu == "📊 Dashboard":
 
-    st.subheader("📊 Tổng quan hoạt động")
+    st.subheader("📊 Dashboard")
 
-    today = date.today()
+    c1, c2, c3, c4 = st.columns(4)
 
-    tour_total = query_one(
-        """
-        SELECT COUNT(*) AS total
-        FROM tours
-        """
+    total_tours = query_one(
+        "SELECT COUNT(*) AS total FROM tours"
     )["total"]
 
-    active_tours = query_one(
-        """
-        SELECT COUNT(*) AS total
-        FROM tours
-        WHERE status != 'Cancelled'
-        """
+    total_guests = query_one(
+        "SELECT COUNT(*) AS total FROM guests"
     )["total"]
 
-    guest_total = query_one(
-        """
-        SELECT COUNT(*) AS total
-        FROM guests
-        """
-    )["total"]
-
-    guide_total = query_one(
-        """
-        SELECT COUNT(*) AS total
-        FROM guides
-        WHERE status = 'Active'
-        """
+    total_guides = query_one(
+        "SELECT COUNT(*) AS total FROM guides"
     )["total"]
 
     open_incidents = query_one(
@@ -1172,118 +1742,166 @@ if menu == "📊 Dashboard":
         """
     )["total"]
 
-    pending_tasks = query_one(
-        """
-        SELECT COUNT(*) AS total
-        FROM tasks
-        WHERE done = 0
-        """
-    )["total"]
+    c1.metric(
+        "🚌 Tổng Tour",
+        total_tours,
+    )
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c2.metric(
+        "👥 Khách",
+        total_guests,
+    )
 
-    c1.metric("🚌 Tổng tour", tour_total)
-    c2.metric("📅 Tour hoạt động", active_tours)
-    c3.metric("👥 Khách hàng", guest_total)
-    c4.metric("🧑‍💼 HDV", guide_total)
-    c5.metric("⚠️ Sự cố mở", open_incidents)
-    c6.metric("⏳ Task chưa xong", pending_tasks)
+    c3.metric(
+        "🧑‍💼 Hướng dẫn viên",
+        total_guides,
+    )
 
-    st.markdown("### 🚌 Tour hôm nay")
+    c4.metric(
+        "⚠️ Sự cố mở",
+        open_incidents,
+    )
 
-    tours_today = query_df(
+    st.markdown("---")
+
+    st.subheader("🚌 Tour hôm nay")
+
+    today = date.today()
+
+    today_tours = query_df(
         """
         SELECT
+
             t.code AS 'Mã tour',
+
             t.name AS 'Tên tour',
-            t.start_date AS 'Ngày bắt đầu',
-            t.end_date AS 'Ngày kết thúc',
-            t.start_time AS 'Giờ xuất phát',
+
+            t.start_date AS 'Bắt đầu',
+
+            t.end_date AS 'Kết thúc',
+
+            t.start_time AS 'Giờ',
+
             t.pickup_location AS 'Điểm đón',
-            t.total_guests AS 'Số khách',
+
+            t.total_guests AS 'Khách',
+
             t.status AS 'Trạng thái',
-            COALESCE(g.name, 'Chưa phân công') AS 'Hướng dẫn viên'
+
+            COALESCE(
+                g.name,
+                'Chưa phân công'
+            ) AS 'HDV'
+
         FROM tours t
+
         LEFT JOIN guides g
             ON t.guide_id = g.id
+
         WHERE t.start_date <= %s
           AND t.end_date >= %s
-          AND t.status != 'Cancelled'
+
         ORDER BY t.start_time
         """,
         (today, today),
     )
 
-    if not tours_today.empty:
+    if today_tours.empty:
 
-        st.dataframe(
-            tours_today,
-            use_container_width=True,
-            hide_index=True,
+        st.info(
+            "Hôm nay chưa có tour."
         )
 
     else:
 
-        st.info("Hôm nay chưa có tour.")
+        st.dataframe(
+            today_tours,
+            use_container_width=True,
+            hide_index=True,
+        )
 
-    st.markdown("### 📅 Tour sắp tới")
+
+    st.subheader("📅 Tour sắp tới")
 
     upcoming = query_df(
         """
         SELECT
+
             t.code AS 'Mã tour',
+
             t.name AS 'Tên tour',
-            t.start_date AS 'Bắt đầu',
-            t.end_date AS 'Kết thúc',
+
+            t.start_date AS 'Ngày bắt đầu',
+
+            t.end_date AS 'Ngày kết thúc',
+
             t.total_guests AS 'Khách',
-            COALESCE(g.name, 'Chưa phân công') AS 'HDV',
-            t.status AS 'Trạng thái'
+
+            t.status AS 'Trạng thái',
+
+            COALESCE(
+                g.name,
+                'Chưa phân công'
+            ) AS 'HDV'
+
         FROM tours t
+
         LEFT JOIN guides g
             ON t.guide_id = g.id
+
         WHERE t.start_date >= %s
+
         ORDER BY t.start_date
+
         LIMIT 10
         """,
         (today,),
     )
 
-    if not upcoming.empty:
+    st.dataframe(
+        upcoming,
+        use_container_width=True,
+        hide_index=True,
+    )
 
-        st.dataframe(
-            upcoming,
-            use_container_width=True,
-            hide_index=True,
-        )
 
-    st.markdown("### ✅ Tiến độ Checklist")
+    st.subheader("✅ Checklist")
 
-    task_stats = query_one(
+    task_info = query_one(
         """
         SELECT
+
             COUNT(*) AS total,
-            SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END) AS completed
+
+            SUM(
+                CASE
+                WHEN done = 1
+                THEN 1
+                ELSE 0
+                END
+            ) AS completed
+
         FROM tasks
         """
     )
 
-    total_tasks = task_stats["total"] or 0
-    completed_tasks = task_stats["completed"] or 0
+    total_tasks = task_info["total"] or 0
+    completed = task_info["completed"] or 0
 
-    if total_tasks > 0:
+    if total_tasks:
 
-        progress = completed_tasks / total_tasks
+        progress = completed / total_tasks
 
         st.progress(progress)
 
         st.write(
-            f"Đã hoàn thành **{completed_tasks}/{total_tasks}** công việc "
+            f"Hoàn thành **{completed}/{total_tasks}** công việc "
             f"({progress:.0%})"
         )
 
 
 # ============================================================
-# 13. QUẢN LÝ TOUR
+# 15. TOUR MANAGEMENT
 # ============================================================
 
 elif menu == "🚌 Quản lý Tour":
@@ -1292,7 +1910,7 @@ elif menu == "🚌 Quản lý Tour":
 
     tab1, tab2 = st.tabs(
         [
-            "📋 Danh sách Tour",
+            "📋 Danh sách",
             "➕ Tạo Tour",
         ]
     )
@@ -1300,8 +1918,8 @@ elif menu == "🚌 Quản lý Tour":
     with tab1:
 
         search = st.text_input(
-            "🔎 Tìm kiếm tour",
-            placeholder="Nhập mã tour hoặc tên tour...",
+            "🔎 Tìm kiếm",
+            placeholder="Mã tour hoặc tên tour",
         )
 
         if search:
@@ -1309,21 +1927,35 @@ elif menu == "🚌 Quản lý Tour":
             tours = query_df(
                 """
                 SELECT
-                    t.id,
+
                     t.code AS 'Mã tour',
+
                     t.name AS 'Tên tour',
+
                     t.start_date AS 'Bắt đầu',
+
                     t.end_date AS 'Kết thúc',
+
                     t.start_time AS 'Giờ',
-                    t.pickup_location AS 'Điểm đón',
+
                     t.total_guests AS 'Khách',
+
                     t.status AS 'Trạng thái',
-                    COALESCE(g.name, 'Chưa phân công') AS 'HDV'
+
+                    COALESCE(
+                        g.name,
+                        'Chưa phân công'
+                    ) AS 'HDV'
+
                 FROM tours t
+
                 LEFT JOIN guides g
                     ON t.guide_id = g.id
-                WHERE t.code LIKE %s
-                   OR t.name LIKE %s
+
+                WHERE
+                    t.code LIKE %s
+                    OR t.name LIKE %s
+
                 ORDER BY t.start_date DESC
                 """,
                 (
@@ -1337,89 +1969,49 @@ elif menu == "🚌 Quản lý Tour":
             tours = query_df(
                 """
                 SELECT
-                    t.id,
+
                     t.code AS 'Mã tour',
+
                     t.name AS 'Tên tour',
+
                     t.start_date AS 'Bắt đầu',
+
                     t.end_date AS 'Kết thúc',
+
                     t.start_time AS 'Giờ',
-                    t.pickup_location AS 'Điểm đón',
+
                     t.total_guests AS 'Khách',
+
                     t.status AS 'Trạng thái',
-                    COALESCE(g.name, 'Chưa phân công') AS 'HDV'
+
+                    COALESCE(
+                        g.name,
+                        'Chưa phân công'
+                    ) AS 'HDV'
+
                 FROM tours t
+
                 LEFT JOIN guides g
                     ON t.guide_id = g.id
+
                 ORDER BY t.start_date DESC
                 """
             )
 
-        if not tours.empty:
+        if tours.empty:
+
+            st.info(
+                "Chưa có tour."
+            )
+
+        else:
 
             st.dataframe(
-                tours.drop(columns=["id"]),
+                tours,
                 use_container_width=True,
                 hide_index=True,
             )
 
-            st.markdown("### 🗑️ Xóa Tour")
-
-            tour_options = query(
-                """
-                SELECT id, code, name
-                FROM tours
-                ORDER BY start_date DESC
-                """
-            )
-
-            if tour_options:
-
-                selected_delete = st.selectbox(
-                    "Chọn tour muốn xóa",
-                    tour_options,
-                    format_func=lambda x:
-                    f"{x['code']} - {x['name']}",
-                )
-
-                if st.button(
-                    "🗑️ Xóa tour",
-                    type="secondary",
-                ):
-
-                    tour_id = selected_delete["id"]
-
-                    execute(
-                        "DELETE FROM itinerary WHERE tour_id = %s",
-                        (tour_id,),
-                    )
-
-                    execute(
-                        "DELETE FROM guests WHERE tour_id = %s",
-                        (tour_id,),
-                    )
-
-                    execute(
-                        "DELETE FROM tasks WHERE tour_id = %s",
-                        (tour_id,),
-                    )
-
-                    execute(
-                        "DELETE FROM incidents WHERE tour_id = %s",
-                        (tour_id,),
-                    )
-
-                    execute(
-                        "DELETE FROM tours WHERE id = %s",
-                        (tour_id,),
-                    )
-
-                    st.success("Đã xóa tour.")
-
-                    st.rerun()
-
-        else:
-
-            st.info("Chưa có tour phù hợp.")
 
     with tab2:
 
@@ -1432,69 +2024,77 @@ elif menu == "🚌 Quản lý Tour":
             """
         )
 
-        with st.form("create_tour_form"):
+        if not guides:
 
-            col1, col2 = st.columns(2)
+            st.warning(
+                "Chưa có hướng dẫn viên."
+            )
 
-            with col1:
+        else:
 
-                code = st.text_input(
-                    "Mã tour *",
-                    placeholder="TM-VT-003",
-                )
+            with st.form("create_tour"):
 
-                name = st.text_input(
-                    "Tên tour *",
-                    placeholder="Vũng Tàu 3 ngày 2 đêm",
-                )
+                c1, c2 = st.columns(2)
 
-                start_date = st.date_input(
-                    "Ngày bắt đầu",
-                    value=date.today(),
-                )
+                with c1:
 
-                end_date = st.date_input(
-                    "Ngày kết thúc",
-                    value=date.today(),
-                )
+                    code = st.text_input(
+                        "Mã tour *",
+                        placeholder="TM-VT-003",
+                    )
 
-                start_time = st.time_input(
-                    "Giờ khởi hành",
-                    value=time(7, 30),
-                )
+                    name = st.text_input(
+                        "Tên tour *",
+                        placeholder="Vũng Tàu Discovery",
+                    )
 
-            with col2:
+                    start_date = st.date_input(
+                        "Ngày bắt đầu",
+                        date.today(),
+                    )
 
-                pickup = st.text_input(
-                    "Điểm đón",
-                    placeholder="Khách sạn...",
-                )
+                    end_date = st.date_input(
+                        "Ngày kết thúc",
+                        date.today(),
+                    )
 
-                hotel = st.text_input(
-                    "Khách sạn",
-                )
+                    start_time = st.time_input(
+                        "Giờ xuất phát",
+                        time(7, 30),
+                    )
 
-                vehicle = st.text_input(
-                    "Phương tiện",
-                    value="Tourist bus",
-                )
+                with c2:
 
-                driver = st.text_input(
-                    "Tài xế",
-                )
+                    pickup = st.text_input(
+                        "Điểm đón"
+                    )
 
-                total_guests = st.number_input(
-                    "Số khách",
-                    min_value=0,
-                    max_value=1000,
-                    value=20,
-                )
+                    hotel = st.text_input(
+                        "Khách sạn"
+                    )
 
-                guide_choice = st.selectbox(
-                    "Hướng dẫn viên",
-                    guides,
-                    format_func=lambda x: x["name"],
-                )
+                    vehicle = st.text_input(
+                        "Phương tiện",
+                        "Tourist Bus",
+                    )
+
+                    driver = st.text_input(
+                        "Tài xế"
+                    )
+
+                    guests = st.number_input(
+                        "Số khách",
+                        0,
+                        500,
+                        20,
+                    )
+
+                    guide = st.selectbox(
+                        "Hướng dẫn viên",
+                        guides,
+                        format_func=lambda x:
+                        x["name"],
+                    )
 
                 status = st.selectbox(
                     "Trạng thái",
@@ -1506,91 +2106,98 @@ elif menu == "🚌 Quản lý Tour":
                     ],
                 )
 
-            notes = st.text_area("Ghi chú")
+                notes = st.text_area(
+                    "Ghi chú"
+                )
 
-            submitted = st.form_submit_button(
-                "💾 Tạo Tour",
-                type="primary",
-            )
+                submit = st.form_submit_button(
+                    "💾 Tạo Tour",
+                    type="primary",
+                )
 
-            if submitted:
+                if submit:
 
-                if not code or not name:
-
-                    st.error(
-                        "Vui lòng nhập Mã tour và Tên tour."
-                    )
-
-                elif end_date < start_date:
-
-                    st.error(
-                        "Ngày kết thúc không thể trước ngày bắt đầu."
-                    )
-
-                else:
-
-                    try:
-
-                        execute(
-                            """
-                            INSERT INTO tours
-                            (
-                                code,
-                                name,
-                                guide_id,
-                                start_date,
-                                end_date,
-                                start_time,
-                                pickup_location,
-                                hotel,
-                                vehicle,
-                                driver,
-                                total_guests,
-                                status,
-                                notes
-                            )
-                            VALUES
-                            (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                            """,
-                            (
-                                code,
-                                name,
-                                guide_choice["id"],
-                                start_date,
-                                end_date,
-                                start_time,
-                                pickup,
-                                hotel,
-                                vehicle,
-                                driver,
-                                total_guests,
-                                status,
-                                notes,
-                            ),
-                        )
-
-                        st.success(
-                            f"Đã tạo tour {code} thành công!"
-                        )
-
-                        st.rerun()
-
-                    except Exception as e:
+                    if not code or not name:
 
                         st.error(
-                            "Không thể tạo tour."
+                            "Vui lòng nhập mã và tên tour."
                         )
 
-                        st.code(str(e))
+                    elif end_date < start_date:
+
+                        st.error(
+                            "Ngày kết thúc phải sau hoặc bằng ngày bắt đầu."
+                        )
+
+                    else:
+
+                        try:
+
+                            execute(
+                                """
+                                INSERT INTO tours
+                                (
+                                    code,
+                                    name,
+                                    guide_id,
+                                    start_date,
+                                    end_date,
+                                    start_time,
+                                    pickup_location,
+                                    hotel,
+                                    vehicle,
+                                    driver,
+                                    total_guests,
+                                    status,
+                                    notes
+                                )
+                                VALUES
+                                (
+                                    %s,%s,%s,%s,%s,%s,%s,
+                                    %s,%s,%s,%s,%s,%s
+                                )
+                                """,
+                                (
+                                    code,
+                                    name,
+                                    guide["id"],
+                                    start_date,
+                                    end_date,
+                                    start_time,
+                                    pickup,
+                                    hotel,
+                                    vehicle,
+                                    driver,
+                                    guests,
+                                    status,
+                                    notes,
+                                ),
+                            )
+
+                            st.success(
+                                "🎉 Tạo tour thành công!"
+                            )
+
+                            st.rerun()
+
+                        except Exception as e:
+
+                            st.error(
+                                "Không thể tạo tour."
+                            )
+
+                            st.code(
+                                str(e)
+                            )
 
 
 # ============================================================
-# 14. LỊCH TRÌNH
+# 16. ITINERARY
 # ============================================================
 
 elif menu == "🗺️ Lịch trình":
 
-    st.subheader("🗺️ Lịch trình tour")
+    st.subheader("🗺️ Lịch trình")
 
     tours = query(
         """
@@ -1602,47 +2209,60 @@ elif menu == "🗺️ Lịch trình":
 
     if not tours:
 
-        st.info("Chưa có tour.")
+        st.info(
+            "Chưa có tour."
+        )
 
     else:
 
-        selected_tour = st.selectbox(
+        selected = st.selectbox(
             "Chọn tour",
             tours,
             format_func=lambda x:
             f"{x['code']} - {x['name']}",
         )
 
-        itinerary = query_df(
+        data = query_df(
             """
             SELECT
-                id,
+
                 tour_date AS 'Ngày',
+
                 time AS 'Giờ',
+
                 place AS 'Địa điểm',
+
                 activity AS 'Hoạt động',
+
                 transport AS 'Phương tiện',
+
                 notes AS 'Ghi chú'
+
             FROM itinerary
+
             WHERE tour_id = %s
+
             ORDER BY tour_date, time
             """,
-            (selected_tour["id"],),
+            (selected["id"],),
         )
 
-        if not itinerary.empty:
+        if data.empty:
 
-            st.dataframe(
-                itinerary.drop(columns=["id"]),
-                use_container_width=True,
-                hide_index=True,
+            st.info(
+                "Tour chưa có lịch trình."
             )
 
         else:
 
-            st.info("Tour chưa có lịch trình.")
+            st.dataframe(
+                data,
+                use_container_width=True,
+                hide_index=True,
+            )
 
-        st.markdown("### ➕ Thêm điểm trong lịch trình")
+
+        st.markdown("### ➕ Thêm lịch trình")
 
         with st.form("add_itinerary"):
 
@@ -1650,14 +2270,14 @@ elif menu == "🗺️ Lịch trình":
 
             with c1:
 
-                itinerary_date = st.date_input(
+                d = st.date_input(
                     "Ngày",
-                    value=date.today(),
+                    date.today(),
                 )
 
-                itinerary_time = st.time_input(
+                t = st.time_input(
                     "Giờ",
-                    value=time(8, 0),
+                    time(8, 0),
                 )
 
                 place = st.text_input(
@@ -1672,7 +2292,7 @@ elif menu == "🗺️ Lịch trình":
 
                 transport = st.text_input(
                     "Phương tiện",
-                    value="Bus",
+                    "Bus",
                 )
 
                 notes = st.text_area(
@@ -1680,7 +2300,7 @@ elif menu == "🗺️ Lịch trình":
                 )
 
             submit = st.form_submit_button(
-                "➕ Thêm vào lịch trình",
+                "➕ Thêm",
                 type="primary",
             )
 
@@ -1710,9 +2330,9 @@ elif menu == "🗺️ Lịch trình":
                         (%s,%s,%s,%s,%s,%s,%s)
                         """,
                         (
-                            selected_tour["id"],
-                            itinerary_date,
-                            itinerary_time,
+                            selected["id"],
+                            d,
+                            t,
                             place,
                             activity,
                             transport,
@@ -1728,12 +2348,12 @@ elif menu == "🗺️ Lịch trình":
 
 
 # ============================================================
-# 15. KHÁCH HÀNG
+# 17. GUESTS
 # ============================================================
 
 elif menu == "👥 Khách hàng":
 
-    st.subheader("👥 Quản lý khách hàng")
+    st.subheader("👥 Khách hàng")
 
     tours = query(
         """
@@ -1745,11 +2365,13 @@ elif menu == "👥 Khách hàng":
 
     if not tours:
 
-        st.info("Chưa có tour.")
+        st.info(
+            "Chưa có tour."
+        )
 
     else:
 
-        selected_tour = st.selectbox(
+        selected = st.selectbox(
             "Chọn tour",
             tours,
             format_func=lambda x:
@@ -1759,34 +2381,45 @@ elif menu == "👥 Khách hàng":
         guests = query_df(
             """
             SELECT
-                id,
+
                 full_name AS 'Họ tên',
+
                 gender AS 'Giới tính',
+
                 age AS 'Tuổi',
+
                 nationality AS 'Quốc tịch',
+
                 phone AS 'Điện thoại',
+
                 room_number AS 'Phòng',
+
                 attendance AS 'Điểm danh',
-                special_request AS 'Yêu cầu đặc biệt'
+
+                special_request AS 'Yêu cầu'
+
             FROM guests
+
             WHERE tour_id = %s
+
             ORDER BY full_name
             """,
-            (selected_tour["id"],),
+            (selected["id"],),
         )
 
         st.metric(
-            "Tổng số khách",
+            "Tổng khách",
             len(guests),
         )
 
         if not guests.empty:
 
             st.dataframe(
-                guests.drop(columns=["id"]),
+                guests,
                 use_container_width=True,
                 hide_index=True,
             )
+
 
         st.markdown("### ➕ Thêm khách")
 
@@ -1811,20 +2444,20 @@ elif menu == "👥 Khách hàng":
 
                 age = st.number_input(
                     "Tuổi",
-                    min_value=0,
-                    max_value=120,
-                    value=25,
+                    0,
+                    120,
+                    25,
                 )
 
                 nationality = st.text_input(
                     "Quốc tịch",
-                    value="Vietnam",
+                    "Vietnam",
                 )
 
             with c2:
 
                 phone = st.text_input(
-                    "Số điện thoại"
+                    "Điện thoại"
                 )
 
                 room = st.text_input(
@@ -1877,7 +2510,7 @@ elif menu == "👥 Khách hàng":
                         (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         """,
                         (
-                            selected_tour["id"],
+                            selected["id"],
                             full_name,
                             gender,
                             age,
@@ -1897,12 +2530,12 @@ elif menu == "👥 Khách hàng":
 
 
 # ============================================================
-# 16. CHECKLIST
+# 18. CHECKLIST
 # ============================================================
 
 elif menu == "✅ Checklist":
 
-    st.subheader("✅ Checklist hướng dẫn viên")
+    st.subheader("✅ Checklist")
 
     tours = query(
         """
@@ -1914,11 +2547,13 @@ elif menu == "✅ Checklist":
 
     if not tours:
 
-        st.info("Chưa có tour.")
+        st.info(
+            "Chưa có tour."
+        )
 
     else:
 
-        selected_tour = st.selectbox(
+        selected = st.selectbox(
             "Chọn tour",
             tours,
             format_func=lambda x:
@@ -1932,7 +2567,7 @@ elif menu == "✅ Checklist":
             WHERE tour_id = %s
             ORDER BY due_date, due_time
             """,
-            (selected_tour["id"],),
+            (selected["id"],),
         )
 
         if tasks:
@@ -1940,9 +2575,7 @@ elif menu == "✅ Checklist":
             for task in tasks:
 
                 checked = st.checkbox(
-                    f"{'✅' if task['done'] else '⬜'} "
-                    f"{task['task_name']} "
-                    f"— {task['assigned_to'] or 'Chưa giao'}",
+                    task["task_name"],
                     value=bool(task["done"]),
                     key=f"task_{task['id']}",
                 )
@@ -1965,302 +2598,18 @@ elif menu == "✅ Checklist":
 
         else:
 
-            st.info("Chưa có checklist.")
-
-        st.markdown("### ➕ Thêm công việc")
-
-        with st.form("add_task"):
-
-            task_name = st.text_input(
-                "Tên công việc *"
+            st.info(
+                "Chưa có checklist."
             )
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-
-                task_type = st.text_input(
-                    "Loại công việc",
-                    value="General",
-                )
-
-                due_date = st.date_input(
-                    "Ngày thực hiện",
-                    value=date.today(),
-                )
-
-            with c2:
-
-                due_time = st.time_input(
-                    "Giờ",
-                    value=time(8, 0),
-                )
-
-                assigned_to = st.text_input(
-                    "Người phụ trách"
-                )
-
-            notes = st.text_area(
-                "Ghi chú"
-            )
-
-            submit = st.form_submit_button(
-                "➕ Thêm task",
-                type="primary",
-            )
-
-            if submit:
-
-                if not task_name:
-
-                    st.error(
-                        "Vui lòng nhập tên công việc."
-                    )
-
-                else:
-
-                    execute(
-                        """
-                        INSERT INTO tasks
-                        (
-                            tour_id,
-                            task_name,
-                            task_type,
-                            due_date,
-                            due_time,
-                            assigned_to,
-                            notes
-                        )
-                        VALUES
-                        (%s,%s,%s,%s,%s,%s,%s)
-                        """,
-                        (
-                            selected_tour["id"],
-                            task_name,
-                            task_type,
-                            due_date,
-                            due_time,
-                            assigned_to,
-                            notes,
-                        ),
-                    )
-
-                    st.success(
-                        "Đã thêm công việc."
-                    )
-
-                    st.rerun()
 
 
 # ============================================================
-# 17. ĐIỂM THAM QUAN
+# 19. PLACES
 # ============================================================
 
 elif menu == "📍 Điểm tham quan":
 
-    st.subheader("📍 Thư viện điểm tham quan")
-
-    search = st.text_input(
-        "🔎 Tìm điểm tham quan",
-        placeholder="Ví dụ: Vũng Tàu...",
-    )
-
-    if search:
-
-        places_df = query_df(
-            """
-            SELECT *
-            FROM places
-            WHERE name LIKE %s
-               OR location LIKE %s
-               OR category LIKE %s
-            ORDER BY name
-            """,
-            (
-                f"%{search}%",
-                f"%{search}%",
-                f"%{search}%",
-            ),
-        )
-
-    else:
-
-        places_df = query_df(
-            """
-            SELECT *
-            FROM places
-            ORDER BY name
-            """
-        )
-
-    if places_df.empty:
-
-        st.info("Chưa có điểm tham quan.")
-
-    else:
-
-        for _, place in places_df.iterrows():
-
-            with st.container():
-
-                c1, c2 = st.columns([1, 2])
-
-                with c1:
-
-                    if (
-                        place["image_url"]
-                        and str(place["image_url"]).strip()
-                    ):
-
-                        st.image(
-                            place["image_url"],
-                            use_container_width=True,
-                        )
-
-                with c2:
-
-                    st.markdown(
-                        f"### 📍 {place['name']}"
-                    )
-
-                    st.caption(
-                        f"{place['location']} • "
-                        f"{place['category']}"
-                    )
-
-                    st.write(
-                        place["introduction"] or ""
-                    )
-
-                    with st.expander(
-                        "Xem nội dung thuyết minh"
-                    ):
-
-                        st.markdown(
-                            "**📖 Lịch sử**"
-                        )
-
-                        st.write(
-                            place["history"] or ""
-                        )
-
-                        st.markdown(
-                            "**⭐ Điểm nổi bật**"
-                        )
-
-                        st.write(
-                            place["highlights"] or ""
-                        )
-
-                        st.markdown(
-                            "**💡 Lưu ý cho HDV**"
-                        )
-
-                        st.write(
-                            place["tips"] or ""
-                        )
-
-                st.divider()
-
-    st.markdown("### ➕ Thêm điểm tham quan")
-
-    with st.form("add_place"):
-
-        c1, c2 = st.columns(2)
-
-        with c1:
-
-            name = st.text_input(
-                "Tên địa điểm *"
-            )
-
-            location = st.text_input(
-                "Vị trí"
-            )
-
-            category = st.text_input(
-                "Loại địa điểm"
-            )
-
-            image_url = st.text_input(
-                "URL hình ảnh"
-            )
-
-        with c2:
-
-            introduction = st.text_area(
-                "Giới thiệu"
-            )
-
-            history = st.text_area(
-                "Lịch sử"
-            )
-
-            highlights = st.text_area(
-                "Điểm nổi bật"
-            )
-
-            tips = st.text_area(
-                "Lưu ý cho HDV"
-            )
-
-        submit = st.form_submit_button(
-            "➕ Thêm địa điểm",
-            type="primary",
-        )
-
-        if submit:
-
-            if not name:
-
-                st.error(
-                    "Vui lòng nhập tên địa điểm."
-                )
-
-            else:
-
-                execute(
-                    """
-                    INSERT INTO places
-                    (
-                        name,
-                        location,
-                        category,
-                        introduction,
-                        history,
-                        highlights,
-                        tips,
-                        image_url
-                    )
-                    VALUES
-                    (%s,%s,%s,%s,%s,%s,%s,%s)
-                    """,
-                    (
-                        name,
-                        location,
-                        category,
-                        introduction,
-                        history,
-                        highlights,
-                        tips,
-                        image_url,
-                    ),
-                )
-
-                st.success(
-                    "Đã thêm điểm tham quan."
-                )
-
-                st.rerun()
-
-
-# ============================================================
-# 18. THƯ VIỆN THUYẾT MINH
-# ============================================================
-
-elif menu == "🎤 Thư viện thuyết minh":
-
-    st.subheader("🎤 Thư viện thuyết minh")
+    st.subheader("📍 Điểm tham quan")
 
     places = query(
         """
@@ -2273,267 +2622,225 @@ elif menu == "🎤 Thư viện thuyết minh":
     if not places:
 
         st.info(
-            "Chưa có dữ liệu điểm tham quan."
+            "Chưa có điểm tham quan."
         )
 
     else:
 
-        selected_place = st.selectbox(
-            "Chọn điểm tham quan",
+        for place in places:
+
+            with st.expander(
+                f"📍 {place['name']} — {place['location']}"
+            ):
+
+                c1, c2 = st.columns(
+                    [1, 2]
+                )
+
+                with c1:
+
+                    if place["image_url"]:
+
+                        st.image(
+                            place["image_url"],
+                            use_container_width=True,
+                        )
+
+                with c2:
+
+                    st.write(
+                        place["introduction"]
+                    )
+
+                    st.markdown(
+                        "**📖 Lịch sử**"
+                    )
+
+                    st.write(
+                        place["history"]
+                    )
+
+                    st.markdown(
+                        "**⭐ Điểm nổi bật**"
+                    )
+
+                    st.write(
+                        place["highlights"]
+                    )
+
+                    st.markdown(
+                        "**💡 Lưu ý**"
+                    )
+
+                    st.write(
+                        place["tips"]
+                    )
+
+
+# ============================================================
+# 20. THUYẾT MINH
+# ============================================================
+
+elif menu == "🎤 Thư viện thuyết minh":
+
+    st.subheader(
+        "🎤 Thư viện thuyết minh"
+    )
+
+    places = query(
+        """
+        SELECT *
+        FROM places
+        ORDER BY name
+        """
+    )
+
+    if not places:
+
+        st.info(
+            "Chưa có điểm tham quan."
+        )
+
+    else:
+
+        selected = st.selectbox(
+            "Chọn địa điểm",
             places,
             format_func=lambda x:
-            f"{x['name']} - {x['location']}",
+            x["name"],
         )
 
         st.markdown(
-            f"## 🎙️ {selected_place['name']}"
+            f"## 🎙️ {selected['name']}"
         )
-
-        st.caption(
-            selected_place["location"]
-        )
-
-        st.markdown("### 🎤 Nội dung giới thiệu")
 
         st.info(
-            selected_place["introduction"]
-            or "Chưa có nội dung."
+            selected["introduction"]
         )
 
-        col1, col2 = st.columns(2)
+        st.markdown("### 📖 Lịch sử")
 
-        with col1:
+        st.write(
+            selected["history"]
+        )
 
-            st.markdown("### 📖 Lịch sử")
+        st.markdown("### ⭐ Điểm nổi bật")
 
-            st.write(
-                selected_place["history"]
-                or "Chưa có nội dung."
-            )
+        st.write(
+            selected["highlights"]
+        )
 
-        with col2:
-
-            st.markdown("### ⭐ Điểm nổi bật")
-
-            st.write(
-                selected_place["highlights"]
-                or "Chưa có nội dung."
-            )
-
-        st.markdown("### 💡 Lưu ý khi thuyết minh")
+        st.markdown("### 💡 Lưu ý cho HDV")
 
         st.warning(
-            selected_place["tips"]
-            or "Chưa có lưu ý."
+            selected["tips"]
         )
 
-        st.markdown("### 🗣️ Gợi ý lời dẫn")
+        st.markdown(
+            "### 🗣️ Mẫu lời dẫn"
+        )
 
         st.code(
             f"""
 Xin chào quý khách!
 
 Ngay trước mắt chúng ta là
-{selected_place['name']}.
+{selected['name']}.
 
-{selected_place['introduction']}
+{selected['introduction']}
 
-Trong quá trình tham quan, quý khách
-vui lòng đi theo đoàn và chú ý thời gian
-tập trung theo hướng dẫn của HDV.
+Trong quá trình tham quan,
+quý khách vui lòng đi theo đoàn
+và chú ý thời gian tập trung.
 
-Chúc quý khách có một trải nghiệm thật
-vui vẻ và đáng nhớ!
+Chúc quý khách có một trải nghiệm
+thật vui vẻ và đáng nhớ!
             """,
             language="text",
         )
 
 
 # ============================================================
-# 19. SỰ CỐ
+# 21. INCIDENTS
 # ============================================================
 
 elif menu == "⚠️ Sự cố":
 
-    st.subheader("⚠️ Quản lý sự cố")
+    st.subheader(
+        "⚠️ Quản lý sự cố"
+    )
 
     incidents = query_df(
         """
         SELECT
-            i.id,
-            i.incident_date AS 'Ngày',
-            i.incident_time AS 'Giờ',
-            i.type AS 'Loại',
-            i.title AS 'Tiêu đề',
-            i.description AS 'Mô tả',
-            i.solution AS 'Xử lý',
-            i.status AS 'Trạng thái',
-            i.created_by AS 'Người tạo'
-        FROM incidents i
-        ORDER BY i.incident_date DESC, i.incident_time DESC
+
+            incident_date AS 'Ngày',
+
+            incident_time AS 'Giờ',
+
+            type AS 'Loại',
+
+            title AS 'Tiêu đề',
+
+            description AS 'Mô tả',
+
+            solution AS 'Xử lý',
+
+            status AS 'Trạng thái',
+
+            created_by AS 'Người tạo'
+
+        FROM incidents
+
+        ORDER BY
+            incident_date DESC,
+            incident_time DESC
         """
     )
 
-    if not incidents.empty:
+    if incidents.empty:
 
-        st.dataframe(
-            incidents.drop(columns=["id"]),
-            use_container_width=True,
-            hide_index=True,
+        st.info(
+            "Chưa có sự cố."
         )
 
     else:
 
-        st.info("Chưa có sự cố.")
-
-    st.markdown("### ➕ Ghi nhận sự cố")
-
-    tours = query(
-        """
-        SELECT id, code, name
-        FROM tours
-        ORDER BY start_date DESC
-        """
-    )
-
-    with st.form("add_incident"):
-
-        selected_tour = st.selectbox(
-            "Tour",
-            tours,
-            format_func=lambda x:
-            f"{x['code']} - {x['name']}",
+        st.dataframe(
+            incidents,
+            use_container_width=True,
+            hide_index=True,
         )
-
-        c1, c2 = st.columns(2)
-
-        with c1:
-
-            incident_date = st.date_input(
-                "Ngày",
-                value=date.today(),
-            )
-
-            incident_time = st.time_input(
-                "Giờ",
-                value=datetime.now().time().replace(
-                    second=0,
-                    microsecond=0,
-                ),
-            )
-
-            incident_type = st.selectbox(
-                "Loại sự cố",
-                [
-                    "Guest",
-                    "Transport",
-                    "Hotel",
-                    "Lost & Found",
-                    "Health",
-                    "Weather",
-                    "Other",
-                ],
-            )
-
-        with c2:
-
-            title = st.text_input(
-                "Tiêu đề *"
-            )
-
-            status = st.selectbox(
-                "Trạng thái",
-                [
-                    "Open",
-                    "Investigating",
-                    "Resolved",
-                ],
-            )
-
-            created_by = st.text_input(
-                "Người tạo",
-                value="Tour Guide",
-            )
-
-        description = st.text_area(
-            "Mô tả sự cố"
-        )
-
-        solution = st.text_area(
-            "Cách xử lý"
-        )
-
-        submit = st.form_submit_button(
-            "🚨 Lưu sự cố",
-            type="primary",
-        )
-
-        if submit:
-
-            if not title:
-
-                st.error(
-                    "Vui lòng nhập tiêu đề."
-                )
-
-            else:
-
-                execute(
-                    """
-                    INSERT INTO incidents
-                    (
-                        tour_id,
-                        incident_date,
-                        incident_time,
-                        type,
-                        title,
-                        description,
-                        solution,
-                        status,
-                        created_by
-                    )
-                    VALUES
-                    (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """,
-                    (
-                        selected_tour["id"],
-                        incident_date,
-                        incident_time,
-                        incident_type,
-                        title,
-                        description,
-                        solution,
-                        status,
-                        created_by,
-                    ),
-                )
-
-                st.success(
-                    "Đã ghi nhận sự cố."
-                )
-
-                st.rerun()
 
 
 # ============================================================
-# 20. HƯỚNG DẪN VIÊN
+# 22. GUIDES
 # ============================================================
 
 elif menu == "🧑‍💼 Hướng dẫn viên":
 
-    st.subheader("🧑‍💼 Quản lý hướng dẫn viên")
+    st.subheader(
+        "🧑‍💼 Hướng dẫn viên"
+    )
 
     guides = query_df(
         """
         SELECT
-            id,
+
             name AS 'Họ tên',
+
             phone AS 'Điện thoại',
+
             email AS 'Email',
+
             language AS 'Ngôn ngữ',
+
             experience_years AS 'Kinh nghiệm',
+
             status AS 'Trạng thái'
+
         FROM guides
+
         ORDER BY name
         """
     )
@@ -2541,14 +2848,16 @@ elif menu == "🧑‍💼 Hướng dẫn viên":
     if not guides.empty:
 
         st.dataframe(
-            guides.drop(columns=["id"]),
+            guides,
             use_container_width=True,
             hide_index=True,
         )
 
-    st.markdown("### ➕ Thêm hướng dẫn viên")
+    st.markdown(
+        "### ➕ Thêm hướng dẫn viên"
+    )
 
-    with st.form("add_guide"):
+    with st.form("new_guide"):
 
         c1, c2 = st.columns(2)
 
@@ -2570,14 +2879,14 @@ elif menu == "🧑‍💼 Hướng dẫn viên":
 
             language = st.text_input(
                 "Ngôn ngữ",
-                value="Vietnamese, English",
+                "Vietnamese, English",
             )
 
             experience = st.number_input(
-                "Số năm kinh nghiệm",
-                min_value=0,
-                max_value=50,
-                value=1,
+                "Kinh nghiệm",
+                0,
+                50,
+                1,
             )
 
             status = st.selectbox(
@@ -2635,55 +2944,62 @@ elif menu == "🧑‍💼 Hướng dẫn viên":
 
 
 # ============================================================
-# 21. CÀI ĐẶT
+# 23. SETTINGS
 # ============================================================
 
 elif menu == "⚙️ Cài đặt":
 
-    st.subheader("⚙️ Cài đặt hệ thống")
-
-    st.markdown("### 🗄️ Thông tin MySQL")
+    st.subheader(
+        "⚙️ Cài đặt hệ thống"
+    )
 
     try:
 
-        db_info = database_test()
+        info = database_test()
 
         c1, c2, c3 = st.columns(3)
 
         c1.metric(
-            "Trạng thái",
-            "Connected",
+            "Database",
+            info["database"],
         )
 
         c2.metric(
-            "Database",
-            db_info["database"],
+            "User",
+            info["user"],
         )
 
         c3.metric(
-            "User",
-            db_info["user"],
+            "Status",
+            "Connected",
         )
 
         st.success(
-            "🟢 Kết nối Aiven MySQL thành công."
+            "🟢 Aiven MySQL đang hoạt động."
         )
 
         st.write(
-            f"MySQL version: `{db_info['version']}`"
+            f"MySQL version: `{info['version']}`"
         )
 
     except Exception as e:
 
         st.error(
-            "Không thể kết nối database."
+            "Không thể kiểm tra database."
         )
 
-        st.code(str(e))
+        st.code(
+            str(e)
+        )
 
-    st.markdown("### 📊 Thống kê Database")
 
-    tables = [
+    st.markdown("---")
+
+    st.subheader(
+        "📊 Database"
+    )
+
+    table_list = [
         "guides",
         "tours",
         "itinerary",
@@ -2695,12 +3011,15 @@ elif menu == "⚙️ Cài đặt":
 
     stats = []
 
-    for table in tables:
+    for table in table_list:
 
         try:
 
             result = query_one(
-                f"SELECT COUNT(*) AS total FROM `{table}`"
+                f"""
+                SELECT COUNT(*) AS total
+                FROM `{table}`
+                """
             )
 
             stats.append(
@@ -2725,71 +3044,26 @@ elif menu == "⚙️ Cài đặt":
         hide_index=True,
     )
 
-    st.markdown("### 🧪 Kiểm tra kết nối")
-
-    if st.button(
-        "🔄 Test MySQL",
-        type="primary",
-    ):
-
-        try:
-
-            result = database_test()
-
-            st.success(
-                "Kết nối MySQL hoạt động bình thường."
-            )
-
-            st.json(result)
-
-        except Exception as e:
-
-            st.error(
-                "Kết nối thất bại."
-            )
-
-            st.code(str(e))
-
-    st.markdown("---")
-
-    st.info(
-        """
-        **TourMate – Smart Tour Guide Management System**
-
-        Phiên bản demo phục vụ học tập và phát triển
-        ứng dụng quản lý nghiệp vụ hướng dẫn viên du lịch.
-
-        Các module:
-
-        • Quản lý tour  
-        • Lịch trình  
-        • Khách hàng  
-        • Checklist  
-        • Điểm tham quan  
-        • Thư viện thuyết minh  
-        • Quản lý sự cố  
-        • Quản lý hướng dẫn viên  
-        • Dashboard  
-        • MySQL Cloud Database
-        """
-    )
-
 
 # ============================================================
-# 22. FOOTER
+# 24. FOOTER
 # ============================================================
 
 st.markdown(
     """
     <div style="
         text-align:center;
+        padding:40px 0 10px;
         color:#64748b;
-        padding:30px 0 10px 0;
         font-size:13px;
     ">
-        🧭 TourMate • Smart Tour Guide Management System
+
+        🧭 <b>TourMate</b>
+        <br>
+        Smart Tour Guide Management System
         <br>
         Tourism & Travel Management Application
+
     </div>
     """,
     unsafe_allow_html=True,
