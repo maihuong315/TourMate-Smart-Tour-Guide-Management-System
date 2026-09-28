@@ -28,7 +28,7 @@ MYSQL_DATABASE = "defaultdb"
 # CẤU HÌNH GEMINI AI
 # =========================================================
 
-GEMINI_API_KEY = "AQ.Ab8RN6Ljwwr1RBJG3necBoHt3PkBlzv2t0jRKxhVqvLc9lY0QA"
+GEMINI_API_KEY = "AQ.Ab8RN6KrkCxropaBkHu-4GafsikvB1ElB6QqwhHjrXEKqdi2MA"
 
 
 # =========================================================
