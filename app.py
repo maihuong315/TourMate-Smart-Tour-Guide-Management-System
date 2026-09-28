@@ -2,6 +2,60 @@ import streamlit as st
 import pymysql
 
 # =========================================================
+# KẾT NỐI MYSQL AIVEN
+# =========================================================
+
+MYSQL_HOST = "mysql-19728385-npmaihuong-927f.b.aivencloud.com"
+MYSQL_PORT = 27942
+MYSQL_USER = "avnadmin"
+MYSQL_PASSWORD = "AVNS_zBDlzsF9I5fC-EdWcl0"
+MYSQL_DATABASE = "defaultdb"
+
+
+@st.cache_resource
+def get_connection():
+    try:
+        connection = pymysql.connect(
+            host=MYSQL_HOST,
+            port=MYSQL_PORT,
+            user=MYSQL_USER,
+            password=MYSQL_PASSWORD,
+            database=MYSQL_DATABASE,
+            charset="utf8mb4",
+            cursorclass=pymysql.cursors.DictCursor,
+            connect_timeout=15,
+            read_timeout=15,
+            write_timeout=15
+        )
+
+        return connection
+
+    except Exception as e:
+        st.error("❌ Không thể kết nối MySQL Aiven.")
+        st.code(str(e))
+        return None
+
+
+# =========================================================
+# KIỂM TRA KẾT NỐI DATABASE
+# =========================================================
+
+db = get_connection()
+
+if db:
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT 1 AS connected")
+            result = cursor.fetchone()
+
+        if result and result["connected"] == 1:
+            st.sidebar.success("🟢 MySQL Aiven đã kết nối")
+
+    except Exception as e:
+        st.sidebar.error("🔴 MySQL kết nối nhưng truy vấn thất bại")
+        st.sidebar.code(str(e))
+
+# =========================================================
 # CẤU HÌNH TRANG
 # =========================================================
 st.set_page_config(
