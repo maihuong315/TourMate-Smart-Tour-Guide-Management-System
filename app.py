@@ -116,23 +116,36 @@ def check_database():
     conn = None
 
     try:
-
         conn = get_conn()
 
         with conn.cursor() as cursor:
 
-            cursor.execute("""
-                SELECT
-                    VERSION() AS version,
-                    DATABASE() AS database_name,
-                    CURRENT_USER() AS current_user
-            """)
-
+            # Câu kiểm tra đơn giản nhất
+            cursor.execute("SELECT 1 AS connection_ok")
             result = cursor.fetchone()
 
-        return True, result
+            # Lấy thông tin MySQL riêng biệt
+            cursor.execute("SELECT VERSION() AS db_version")
+            version_result = cursor.fetchone()
+
+            cursor.execute("SELECT DATABASE() AS db_name")
+            database_result = cursor.fetchone()
+
+            cursor.execute("SELECT CURRENT_USER() AS db_user")
+            user_result = cursor.fetchone()
+
+        return True, {
+            "connection_ok": result["connection_ok"],
+            "version": version_result["db_version"],
+            "database_name": database_result["db_name"],
+            "current_user": user_result["db_user"]
+        }
 
     except pymysql.err.OperationalError as e:
+
+        return False, str(e)
+
+    except pymysql.err.ProgrammingError as e:
 
         return False, str(e)
 
@@ -143,7 +156,6 @@ def check_database():
     finally:
 
         if conn:
-
             conn.close()
 
 
