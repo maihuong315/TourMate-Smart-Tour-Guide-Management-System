@@ -1,5 +1,50 @@
 import streamlit as st
 import pymysql
+from pymysql.cursors import DictCursor
+
+# =========================================================
+# AIVEN MYSQL
+# =========================================================
+
+MYSQL_CONFIG = {
+    "host": "mysql-19728385-npmaihuong-927f.b.aivencloud.com",
+    "port": 27942,
+    "user": "avnadmin",
+    "password": "AVNS_zBDlzsF9I5fC-EdWcl0",
+    "database": "defaultdb",
+    "charset": "utf8mb4",
+    "cursorclass": DictCursor,
+    "connect_timeout": 10,
+    "read_timeout": 10,
+    "write_timeout": 10,
+    "autocommit": True,
+}
+
+
+def get_connection():
+    return pymysql.connect(**MYSQL_CONFIG)
+
+
+def test_mysql_connection():
+    try:
+        conn = get_connection()
+
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    VERSION() AS version,
+                    DATABASE() AS db_name,
+                    CURRENT_USER() AS db_user
+            """)
+
+            result = cursor.fetchone()
+
+        conn.close()
+
+        return True, result, None
+
+    except Exception as e:
+        return False, None, str(e)
 
 # =========================================================
 # CẤU HÌNH TRANG
