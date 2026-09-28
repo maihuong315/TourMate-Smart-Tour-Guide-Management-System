@@ -22,14 +22,25 @@ st.set_page_config(
 # DATABASE CONFIG
 # ============================================================
 
+# Khuyến nghị:
+# Streamlit Cloud → Settings → Secrets
+#
+# [mysql]
+# password = "MAT_KHAU_AIVEN_CUA_EM"
+#
+# Không nên commit password thật lên GitHub.
+
+try:
+    AIVEN_PASSWORD = st.secrets["mysql"]["password"]
+except Exception:
+    AIVEN_PASSWORD = ""
+
+
 MYSQL_CONFIG = {
     "host": "mysql-19728385-npmaihuong-927f.b.aivencloud.com",
     "port": 27942,
     "user": "avnadmin",
-
-    # DÁN PASSWORD AIVEN MỚI CỦA EM VÀO ĐÂY
-    "password": "AVNS_zBDlzsF9I5fC-EdWcl0",
-
+    "password": AVNS_zBDlzsF9I5fC-EdWcl0,
     "database": "defaultdb",
 }
 
@@ -39,6 +50,12 @@ MYSQL_CONFIG = {
 # ============================================================
 
 def get_conn():
+
+    if not MYSQL_CONFIG["password"]:
+        raise RuntimeError(
+            "Chưa cấu hình mật khẩu Aiven MySQL. "
+            "Hãy thêm password vào Streamlit Secrets."
+        )
 
     return pymysql.connect(
         host=MYSQL_CONFIG["host"],
@@ -50,21 +67,39 @@ def get_conn():
         cursorclass=DictCursor,
         autocommit=True,
         connect_timeout=20,
-        read_timeout=20,
-        write_timeout=20
+        read_timeout=30,
+        write_timeout=30
     )
 
+
+# ============================================================
+# DATABASE HELPERS
+# ============================================================
 
 def execute(sql, params=()):
 
     conn = None
 
     try:
+
         conn = get_conn()
 
         with conn.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.lastrowid
+
+    except pymysql.MySQLError as e:
+
+        error_code = e.args[0] if e.args else "UNKNOWN"
+        error_message = (
+            e.args[1]
+            if len(e.args) > 1
+            else str(e)
+        )
+
+        raise RuntimeError(
+            f"MySQL Error {error_code}: {error_message}"
+        ) from e
 
     finally:
 
@@ -83,6 +118,19 @@ def query(sql, params=()):
         with conn.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
+
+    except pymysql.MySQLError as e:
+
+        error_code = e.args[0] if e.args else "UNKNOWN"
+        error_message = (
+            e.args[1]
+            if len(e.args) > 1
+            else str(e)
+        )
+
+        raise RuntimeError(
+            f"MySQL Error {error_code}: {error_message}"
+        ) from e
 
     finally:
 
@@ -116,22 +164,34 @@ def check_database():
     conn = None
 
     try:
+
         conn = get_conn()
 
         with conn.cursor() as cursor:
 
-            # Câu kiểm tra đơn giản nhất
-            cursor.execute("SELECT 1 AS connection_ok")
+            cursor.execute(
+                "SELECT 1 AS connection_ok"
+            )
+
             result = cursor.fetchone()
 
-            # Lấy thông tin MySQL riêng biệt
-            cursor.execute("SELECT VERSION() AS db_version")
+            cursor.execute(
+                "SELECT VERSION() AS db_version"
+            )
+
             version_result = cursor.fetchone()
 
-            cursor.execute("SELECT DATABASE() AS db_name")
+            cursor.execute(
+                "SELECT DATABASE() AS db_name"
+            )
+
             database_result = cursor.fetchone()
 
-            cursor.execute("SELECT CURRENT_USER() AS db_user")
+            # Không dùng alias current_user
+            cursor.execute(
+                "SELECT CURRENT_USER() AS db_user"
+            )
+
             user_result = cursor.fetchone()
 
         return True, {
@@ -140,14 +200,6 @@ def check_database():
             "database_name": database_result["db_name"],
             "current_user": user_result["db_user"]
         }
-
-    except pymysql.err.OperationalError as e:
-
-        return False, str(e)
-
-    except pymysql.err.ProgrammingError as e:
-
-        return False, str(e)
 
     except Exception as e:
 
@@ -160,17 +212,84 @@ def check_database():
 
 
 # ============================================================
+# CHECK TABLE EXISTENCE
+# ============================================================
+
+def table_exists(table_name):
+
+    rows = query(
+        """
+        SELECT COUNT(*) AS total
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = %s
+        """,
+        (table_name,)
+    )
+
+    return rows[0]["total"] > 0
+
+
+# ============================================================
+# GET EXISTING COLUMNS
+# ============================================================
+
+def get_columns(table_name):
+
+    rows = query(
+        """
+        SELECT
+            COLUMN_NAME
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = %s
+        """,
+        (table_name,)
+    )
+
+    return {
+        row["COLUMN_NAME"]
+        for row in rows
+    }
+
+
+# ============================================================
+# ADD MISSING COLUMN
+# ============================================================
+
+def ensure_column(
+    table_name,
+    column_name,
+    column_definition
+):
+
+    columns = get_columns(table_name)
+
+    if column_name not in columns:
+
+        execute(
+            f"""
+            ALTER TABLE `{table_name}`
+            ADD COLUMN `{column_name}` {column_definition}
+            """
+        )
+
+        return True
+
+    return False
+
+
+# ============================================================
 # DATABASE INITIALIZATION
 # ============================================================
 
 def init_db():
 
-    statements = [
+    # ========================================================
+    # 1. GUIDES
+    # ========================================================
 
-        # ----------------------------------------------------
-        # GUIDES
-        # ----------------------------------------------------
-
+    execute(
         """
         CREATE TABLE IF NOT EXISTS guides (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -182,12 +301,14 @@ def init_db():
             status VARCHAR(30) DEFAULT 'Active',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # TOURS
-        # ----------------------------------------------------
+    # ========================================================
+    # 2. TOURS
+    # ========================================================
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS tours (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -204,19 +325,16 @@ def init_db():
             total_guests INT DEFAULT 0,
             status VARCHAR(50) DEFAULT 'Scheduled',
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            CONSTRAINT fk_tour_guide
-                FOREIGN KEY (guide_id)
-                REFERENCES guides(id)
-                ON DELETE SET NULL
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # ITINERARY
-        # ----------------------------------------------------
+    # ========================================================
+    # 3. ITINERARY
+    # ========================================================
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS itinerary (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -227,19 +345,16 @@ def init_db():
             activity VARCHAR(255),
             transport VARCHAR(100),
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            CONSTRAINT fk_itinerary_tour
-                FOREIGN KEY (tour_id)
-                REFERENCES tours(id)
-                ON DELETE CASCADE
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # GUESTS
-        # ----------------------------------------------------
+    # ========================================================
+    # 4. GUESTS
+    # ========================================================
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS guests (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -253,19 +368,16 @@ def init_db():
             special_request TEXT,
             attendance VARCHAR(50) DEFAULT 'Chưa điểm danh',
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            CONSTRAINT fk_guest_tour
-                FOREIGN KEY (tour_id)
-                REFERENCES tours(id)
-                ON DELETE CASCADE
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # TASKS
-        # ----------------------------------------------------
+    # ========================================================
+    # 5. TASKS
+    # ========================================================
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS tasks (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -277,19 +389,16 @@ def init_db():
             assigned_to VARCHAR(150),
             done TINYINT(1) DEFAULT 0,
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            CONSTRAINT fk_task_tour
-                FOREIGN KEY (tour_id)
-                REFERENCES tours(id)
-                ON DELETE CASCADE
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # PLACES
-        # ----------------------------------------------------
+    # ========================================================
+    # 6. PLACES
+    # ========================================================
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS places (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -303,12 +412,14 @@ def init_db():
             image_url TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """,
+        """
+    )
 
-        # ----------------------------------------------------
-        # INCIDENTS
-        # ----------------------------------------------------
+    # ========================================================
+    # 7. INCIDENTS
+    # ========================================================
 
+    execute(
         """
         CREATE TABLE IF NOT EXISTS incidents (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -321,18 +432,191 @@ def init_db():
             solution TEXT,
             status VARCHAR(50) DEFAULT 'Open',
             created_by VARCHAR(150),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            CONSTRAINT fk_incident_tour
-                FOREIGN KEY (tour_id)
-                REFERENCES tours(id)
-                ON DELETE CASCADE
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
-    ]
+    )
 
-    for sql in statements:
-        execute(sql)
+    # ========================================================
+    # SCHEMA MIGRATION
+    #
+    # Quan trọng:
+    # CREATE TABLE IF NOT EXISTS không sửa bảng cũ.
+    # Vì vậy phải kiểm tra cột và bổ sung nếu thiếu.
+    # ========================================================
+
+    # --------------------------------------------------------
+    # GUIDES
+    # --------------------------------------------------------
+
+    guide_columns = {
+        "name": "VARCHAR(150) NULL",
+        "phone": "VARCHAR(30) NULL",
+        "email": "VARCHAR(150) NULL",
+        "language": "VARCHAR(100) NULL",
+        "experience_years": "INT DEFAULT 0",
+        "status": "VARCHAR(30) DEFAULT 'Active'",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    for column, definition in guide_columns.items():
+
+        ensure_column(
+            "guides",
+            column,
+            definition
+        )
+
+    # --------------------------------------------------------
+    # TOURS
+    # --------------------------------------------------------
+
+    tour_columns = {
+        "code": "VARCHAR(50) NULL",
+        "name": "VARCHAR(255) NULL",
+        "guide_id": "INT NULL",
+        "start_date": "DATE NULL",
+        "end_date": "DATE NULL",
+        "start_time": "VARCHAR(10) NULL",
+        "pickup_location": "VARCHAR(255) NULL",
+        "hotel": "VARCHAR(255) NULL",
+        "vehicle": "VARCHAR(255) NULL",
+        "driver": "VARCHAR(150) NULL",
+        "total_guests": "INT DEFAULT 0",
+        "status": "VARCHAR(50) DEFAULT 'Scheduled'",
+        "notes": "TEXT NULL",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    for column, definition in tour_columns.items():
+
+        ensure_column(
+            "tours",
+            column,
+            definition
+        )
+
+    # --------------------------------------------------------
+    # ITINERARY
+    # --------------------------------------------------------
+
+    itinerary_columns = {
+        "tour_id": "INT NULL",
+        "tour_date": "DATE NULL",
+        "time": "VARCHAR(10) NULL",
+        "place": "VARCHAR(255) NULL",
+        "activity": "VARCHAR(255) NULL",
+        "transport": "VARCHAR(100) NULL",
+        "notes": "TEXT NULL",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    for column, definition in itinerary_columns.items():
+
+        ensure_column(
+            "itinerary",
+            column,
+            definition
+        )
+
+    # --------------------------------------------------------
+    # GUESTS
+    # --------------------------------------------------------
+
+    guest_columns = {
+        "tour_id": "INT NULL",
+        "full_name": "VARCHAR(150) NULL",
+        "gender": "VARCHAR(30) NULL",
+        "age": "INT NULL",
+        "nationality": "VARCHAR(100) NULL",
+        "phone": "VARCHAR(30) NULL",
+        "room_number": "VARCHAR(50) NULL",
+        "special_request": "TEXT NULL",
+        "attendance": "VARCHAR(50) DEFAULT 'Chưa điểm danh'",
+        "notes": "TEXT NULL",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    for column, definition in guest_columns.items():
+
+        ensure_column(
+            "guests",
+            column,
+            definition
+        )
+
+    # --------------------------------------------------------
+    # TASKS
+    # --------------------------------------------------------
+
+    task_columns = {
+        "tour_id": "INT NULL",
+        "task_name": "VARCHAR(255) NULL",
+        "task_type": "VARCHAR(100) NULL",
+        "due_date": "DATE NULL",
+        "due_time": "VARCHAR(10) NULL",
+        "assigned_to": "VARCHAR(150) NULL",
+        "done": "TINYINT(1) DEFAULT 0",
+        "notes": "TEXT NULL",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    for column, definition in task_columns.items():
+
+        ensure_column(
+            "tasks",
+            column,
+            definition
+        )
+
+    # --------------------------------------------------------
+    # PLACES
+    # --------------------------------------------------------
+
+    place_columns = {
+        "name": "VARCHAR(255) NULL",
+        "location": "VARCHAR(255) NULL",
+        "category": "VARCHAR(100) NULL",
+        "introduction": "TEXT NULL",
+        "history": "TEXT NULL",
+        "highlights": "TEXT NULL",
+        "tips": "TEXT NULL",
+        "image_url": "TEXT NULL",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    for column, definition in place_columns.items():
+
+        ensure_column(
+            "places",
+            column,
+            definition
+        )
+
+    # --------------------------------------------------------
+    # INCIDENTS
+    # --------------------------------------------------------
+
+    incident_columns = {
+        "tour_id": "INT NULL",
+        "incident_date": "DATE NULL",
+        "incident_time": "VARCHAR(10) NULL",
+        "type": "VARCHAR(100) NULL",
+        "title": "VARCHAR(255) NULL",
+        "description": "TEXT NULL",
+        "solution": "TEXT NULL",
+        "status": "VARCHAR(50) DEFAULT 'Open'",
+        "created_by": "VARCHAR(150) NULL",
+        "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    for column, definition in incident_columns.items():
+
+        ensure_column(
+            "incidents",
+            column,
+            definition
+        )
 
     # ========================================================
     # DEMO GUIDE
@@ -438,13 +722,23 @@ def init_db():
 # INITIAL DATABASE
 # ============================================================
 
-if MYSQL_CONFIG["password"] == "PASTE_PASSWORD_HERE":
+if not MYSQL_CONFIG["password"]:
 
-    st.error("🔐 Chưa nhập mật khẩu Aiven MySQL.")
+    st.error(
+        "🔐 Chưa cấu hình mật khẩu Aiven MySQL."
+    )
 
     st.info(
-        "Mở app.py → tìm dòng password → "
-        "dán password Aiven mới của em vào."
+        """
+        Vào Streamlit Cloud:
+
+        Manage app → Settings → Secrets
+
+        Thêm:
+
+        [mysql]
+        password = "MẬT_KHẨU_AIVEN_CỦA_EM"
+        """
     )
 
     st.stop()
@@ -454,7 +748,9 @@ db_ok, db_info = check_database()
 
 if not db_ok:
 
-    st.error("🔴 KHÔNG THỂ KẾT NỐI AIVEN MYSQL")
+    st.error(
+        "🔴 KHÔNG THỂ KẾT NỐI AIVEN MYSQL"
+    )
 
     st.code(
         db_info,
@@ -462,12 +758,22 @@ if not db_ok:
     )
 
     st.warning(
-        "Nếu lỗi 1045: kiểm tra username/password Aiven. "
-        "Nếu lỗi timeout: kiểm tra host/port."
+        """
+        Kiểm tra:
+        • Host
+        • Port
+        • Username
+        • Password
+        • Aiven service đang Running
+        """
     )
 
     st.stop()
 
+
+# ============================================================
+# INIT DATABASE
+# ============================================================
 
 try:
 
@@ -475,9 +781,14 @@ try:
 
 except Exception as e:
 
-    st.error("🔴 Không thể khởi tạo database.")
+    st.error(
+        "🔴 Không thể khởi tạo/cập nhật database."
+    )
 
-    st.exception(e)
+    st.code(
+        str(e),
+        language="text"
+    )
 
     st.stop()
 
@@ -492,9 +803,12 @@ def format_date(value):
         return ""
 
     try:
-        return pd.to_datetime(value).strftime("%d/%m/%Y")
+        return pd.to_datetime(value).strftime(
+            "%d/%m/%Y"
+        )
 
     except Exception:
+
         return str(value)
 
 
@@ -524,7 +838,10 @@ def status_badge(status):
             "🟢 Đã xử lý"
     }
 
-    return badges.get(status, status)
+    return badges.get(
+        status,
+        status
+    )
 
 
 def get_today_tours():
@@ -539,7 +856,7 @@ def get_today_tours():
             ON t.guide_id = g.id
         WHERE t.start_date <= CURDATE()
           AND t.end_date >= CURDATE()
-          AND t.status != 'Cancelled'
+          AND COALESCE(t.status, '') != 'Cancelled'
         ORDER BY t.start_time ASC
         """
     )
@@ -565,18 +882,14 @@ def get_tour_options():
     for tour in tours:
 
         label = (
-            f"{tour['code']} - {tour['name']} "
+            f"{tour['code'] or 'NO-CODE'} - "
+            f"{tour['name'] or 'Chưa đặt tên'} "
             f"({format_date(tour['start_date'])})"
         )
 
         result[label] = tour["id"]
 
     return result
-
-
-def refresh():
-
-    st.rerun()
 
 
 # ============================================================
@@ -611,7 +924,9 @@ with st.sidebar:
 
     st.divider()
 
-    st.success("🟢 MySQL Connected")
+    st.success(
+        "🟢 MySQL Connected"
+    )
 
     st.caption(
         f"Database: {MYSQL_CONFIG['database']}"
@@ -644,18 +959,24 @@ if menu == "🏠 Dashboard":
     # METRICS
     # --------------------------------------------------------
 
-    tour_today = query_one(
+    tour_today_row = query_one(
         """
         SELECT COUNT(*) AS total
         FROM tours
         WHERE start_date <= %s
           AND end_date >= %s
-          AND status != 'Cancelled'
+          AND COALESCE(status, '') != 'Cancelled'
         """,
         (today, today)
-    )["total"]
+    )
 
-    guests_today = query_one(
+    tour_today = (
+        tour_today_row["total"]
+        if tour_today_row
+        else 0
+    )
+
+    guests_today_row = query_one(
         """
         SELECT COUNT(*) AS total
         FROM guests g
@@ -663,27 +984,45 @@ if menu == "🏠 Dashboard":
             ON g.tour_id = t.id
         WHERE t.start_date <= %s
           AND t.end_date >= %s
-          AND t.status != 'Cancelled'
+          AND COALESCE(t.status, '') != 'Cancelled'
         """,
         (today, today)
-    )["total"]
+    )
 
-    tasks_today = query_one(
+    guests_today = (
+        guests_today_row["total"]
+        if guests_today_row
+        else 0
+    )
+
+    tasks_today_row = query_one(
         """
         SELECT COUNT(*) AS total
         FROM tasks
         WHERE due_date = %s
         """,
         (today,)
-    )["total"]
+    )
 
-    open_incidents = query_one(
+    tasks_today = (
+        tasks_today_row["total"]
+        if tasks_today_row
+        else 0
+    )
+
+    open_incidents_row = query_one(
         """
         SELECT COUNT(*) AS total
         FROM incidents
-        WHERE status != 'Resolved'
+        WHERE COALESCE(status, 'Open') != 'Resolved'
         """
-    )["total"]
+    )
+
+    open_incidents = (
+        open_incidents_row["total"]
+        if open_incidents_row
+        else 0
+    )
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -713,7 +1052,9 @@ if menu == "🏠 Dashboard":
     # TODAY TOUR
     # --------------------------------------------------------
 
-    st.subheader("📅 Công việc hôm nay")
+    st.subheader(
+        "📅 Công việc hôm nay"
+    )
 
     today_tours = get_today_tours()
 
@@ -740,7 +1081,8 @@ if menu == "🏠 Dashboard":
                     )
 
                     st.write(
-                        f"**Mã tour:** {tour['code']}"
+                        f"**Mã tour:** "
+                        f"{tour['code']}"
                     )
 
                     st.write(
@@ -778,7 +1120,9 @@ if menu == "🏠 Dashboard":
                     )
 
                     st.write(
-                        status_badge(tour["status"])
+                        status_badge(
+                            tour["status"]
+                        )
                     )
 
     st.divider()
@@ -787,7 +1131,9 @@ if menu == "🏠 Dashboard":
     # TODAY CHECKLIST
     # --------------------------------------------------------
 
-    st.subheader("✅ Checklist hôm nay")
+    st.subheader(
+        "✅ Checklist hôm nay"
+    )
 
     tasks_today_data = query(
         """
@@ -798,7 +1144,9 @@ if menu == "🏠 Dashboard":
         LEFT JOIN tours tr
             ON t.tour_id = tr.id
         WHERE t.due_date = %s
-        ORDER BY t.done ASC, t.due_time ASC
+        ORDER BY
+            t.done ASC,
+            t.due_time ASC
         """,
         (today,)
     )
@@ -817,7 +1165,9 @@ if menu == "🏠 Dashboard":
 
             if task["tour_code"]:
 
-                label += f" — {task['tour_code']}"
+                label += (
+                    f" — {task['tour_code']}"
+                )
 
             checked = st.checkbox(
                 label,
@@ -884,9 +1234,25 @@ elif menu == "📅 Lịch tour":
             list(guide_options.keys())
         )
 
-    month_string = selected_month.strftime(
-        "%Y-%m"
+    first_day = selected_month.replace(
+        day=1
     )
+
+    if first_day.month == 12:
+
+        next_month = date(
+            first_day.year + 1,
+            1,
+            1
+        )
+
+    else:
+
+        next_month = date(
+            first_day.year,
+            first_day.month + 1,
+            1
+        )
 
     sql = """
         SELECT
@@ -903,10 +1269,14 @@ elif menu == "📅 Lịch tour":
         FROM tours t
         LEFT JOIN guides g
             ON t.guide_id = g.id
-        WHERE DATE_FORMAT(t.start_date, '%%Y-%%m') = %s
+        WHERE t.start_date < %s
+          AND t.end_date >= %s
     """
 
-    params = [month_string]
+    params = [
+        next_month,
+        first_day
+    ]
 
     if guide_filter != "Tất cả":
 
@@ -919,8 +1289,9 @@ elif menu == "📅 Lịch tour":
         )
 
     sql += """
-        ORDER BY t.start_date ASC,
-                 t.start_time ASC
+        ORDER BY
+            t.start_date ASC,
+            t.start_time ASC
     """
 
     df = query_df(
@@ -980,7 +1351,9 @@ elif menu == "🚌 Quản lý tour":
             FROM tours t
             LEFT JOIN guides g
                 ON t.guide_id = g.id
-            ORDER BY t.start_date DESC, t.id DESC
+            ORDER BY
+                t.start_date DESC,
+                t.id DESC
             """
         )
 
@@ -995,7 +1368,8 @@ elif menu == "🚌 Quản lý tour":
             for tour in tours:
 
                 with st.expander(
-                    f"🚌 {tour['code']} — {tour['name']}"
+                    f"🚌 {tour['code']} — "
+                    f"{tour['name']}"
                 ):
 
                     c1, c2, c3 = st.columns(3)
@@ -1043,7 +1417,9 @@ elif menu == "🚌 Quản lý tour":
                     )
 
                     st.write(
-                        status_badge(tour["status"])
+                        status_badge(
+                            tour["status"]
+                        )
                     )
 
                     if tour["notes"]:
@@ -1059,19 +1435,27 @@ elif menu == "🚌 Quản lý tour":
                         key=f"delete_tour_{tour['id']}"
                     ):
 
-                        execute(
-                            """
-                            DELETE FROM tours
-                            WHERE id=%s
-                            """,
-                            (tour["id"],)
-                        )
+                        try:
 
-                        st.success(
-                            "Đã xóa tour."
-                        )
+                            execute(
+                                """
+                                DELETE FROM tours
+                                WHERE id=%s
+                                """,
+                                (tour["id"],)
+                            )
 
-                        st.rerun()
+                            st.success(
+                                "Đã xóa tour."
+                            )
+
+                            st.rerun()
+
+                        except Exception as e:
+
+                            st.error(
+                                str(e)
+                            )
 
     # ========================================================
     # CREATE TOUR
@@ -1241,10 +1625,14 @@ elif menu == "🚌 Quản lý tour":
                             (
                                 code_clean,
                                 name_clean,
-                                guide_options[guide_name],
+                                guide_options[
+                                    guide_name
+                                ],
                                 start_date,
                                 end_date,
-                                start_time.strftime("%H:%M"),
+                                start_time.strftime(
+                                    "%H:%M"
+                                ),
                                 pickup.strip(),
                                 hotel.strip(),
                                 vehicle.strip(),
@@ -1261,11 +1649,10 @@ elif menu == "🚌 Quản lý tour":
 
                         st.rerun()
 
-                    except pymysql.err.IntegrityError:
+                    except Exception as e:
 
                         st.error(
-                            "❌ Mã tour đã tồn tại. "
-                            "Hãy sử dụng mã khác."
+                            str(e)
                         )
 
 
@@ -1342,7 +1729,10 @@ elif menu == "🗺️ Lịch trình":
             SELECT *
             FROM itinerary
             WHERE tour_id=%s
-            ORDER BY tour_date, time, id
+            ORDER BY
+                tour_date,
+                time,
+                id
             """,
             (selected_tour_id,)
         )
@@ -1361,7 +1751,9 @@ elif menu == "🗺️ Lịch trình":
 
             for item in itinerary:
 
-                with st.container(border=True):
+                with st.container(
+                    border=True
+                ):
 
                     c1, c2, c3 = st.columns(
                         [1.2, 2.5, 1]
@@ -1441,6 +1833,7 @@ elif menu == "🗺️ Lịch trình":
                     value=selected_tour[
                         "start_date"
                     ]
+                    or date.today()
                 )
 
                 itinerary_time = st.time_input(
@@ -1480,9 +1873,20 @@ elif menu == "🗺️ Lịch trình":
                     )
 
                 elif (
+                    selected_tour["start_date"]
+                    and
                     itinerary_date <
                     selected_tour["start_date"]
-                    or
+                ):
+
+                    st.error(
+                        "❌ Ngày lịch trình phải nằm "
+                        "trong thời gian của tour."
+                    )
+
+                elif (
+                    selected_tour["end_date"]
+                    and
                     itinerary_date >
                     selected_tour["end_date"]
                 ):
@@ -1506,12 +1910,15 @@ elif menu == "🗺️ Lịch trình":
                             transport,
                             notes
                         )
-                        VALUES (%s,%s,%s,%s,%s,%s,%s)
+                        VALUES
+                        (%s,%s,%s,%s,%s,%s,%s)
                         """,
                         (
                             selected_tour_id,
                             itinerary_date,
-                            itinerary_time.strftime("%H:%M"),
+                            itinerary_time.strftime(
+                                "%H:%M"
+                            ),
                             place.strip(),
                             activity.strip(),
                             transport.strip(),
@@ -1612,7 +2019,9 @@ elif menu == "👥 Khách du lịch":
 
                     current = "Chưa điểm danh"
 
-                c1, c2 = st.columns([3, 1])
+                c1, c2 = st.columns(
+                    [3, 1]
+                )
 
                 with c1:
 
@@ -1747,7 +2156,9 @@ elif menu == "👥 Khách du lịch":
                             tour_id,
                             full_name.strip(),
                             gender,
-                            int(age) if age > 0 else None,
+                            int(age)
+                            if age > 0
+                            else None,
                             nationality.strip(),
                             phone.strip(),
                             room_number.strip(),
@@ -1794,6 +2205,10 @@ elif menu == "🎤 Kho thuyết minh":
 
     if search.strip():
 
+        search_value = (
+            f"%{search.strip()}%"
+        )
+
         places = query(
             """
             SELECT *
@@ -1804,9 +2219,9 @@ elif menu == "🎤 Kho thuyết minh":
             ORDER BY name
             """,
             (
-                f"%{search.strip()}%",
-                f"%{search.strip()}%",
-                f"%{search.strip()}%"
+                search_value,
+                search_value,
+                search_value
             )
         )
 
@@ -2013,7 +2428,9 @@ elif menu == "🎤 Kho thuyết minh":
 
 elif menu == "✅ Checklist":
 
-    st.title("✅ Checklist hướng dẫn viên")
+    st.title(
+        "✅ Checklist hướng dẫn viên"
+    )
 
     tour_options = get_tour_options()
 
@@ -2106,7 +2523,9 @@ elif menu == "✅ Checklist":
 
         for task in tasks:
 
-            with st.container(border=True):
+            with st.container(
+                border=True
+            ):
 
                 col1, col2, col3 = st.columns(
                     [5, 2, 1]
@@ -2128,7 +2547,9 @@ elif menu == "✅ Checklist":
                         key=f"task_{task['id']}"
                     )
 
-                    if checked != bool(task["done"]):
+                    if checked != bool(
+                        task["done"]
+                    ):
 
                         execute(
                             """
@@ -2278,7 +2699,9 @@ elif menu == "✅ Checklist":
                         task_name.strip(),
                         task_type,
                         due_date,
-                        due_time.strftime("%H:%M"),
+                        due_time.strftime(
+                            "%H:%M"
+                        ),
                         assigned_to.strip(),
                         task_notes.strip()
                     )
@@ -2297,7 +2720,9 @@ elif menu == "✅ Checklist":
 
 elif menu == "🚨 Sự cố":
 
-    st.title("🚨 Quản lý sự cố")
+    st.title(
+        "🚨 Quản lý sự cố"
+    )
 
     tour_options = get_tour_options()
 
@@ -2562,7 +2987,9 @@ elif menu == "🚨 Sự cố":
                     (
                         selected_tour_id,
                         incident_date,
-                        incident_time.strftime("%H:%M"),
+                        incident_time.strftime(
+                            "%H:%M"
+                        ),
                         incident_type,
                         title.strip(),
                         description.strip(),
@@ -2758,6 +3185,57 @@ elif menu == "⚙️ Cài đặt dữ liệu":
 
     st.divider()
 
+    # ========================================================
+    # DATABASE STRUCTURE
+    # ========================================================
+
+    st.subheader(
+        "🧱 Cấu trúc bảng"
+    )
+
+    selected_table = st.selectbox(
+        "Chọn bảng để kiểm tra",
+        [
+            "guides",
+            "tours",
+            "itinerary",
+            "guests",
+            "tasks",
+            "places",
+            "incidents"
+        ]
+    )
+
+    try:
+
+        structure = query(
+            f"""
+            SHOW COLUMNS FROM `{selected_table}`
+            """
+        )
+
+        structure_df = pd.DataFrame(
+            structure
+        )
+
+        st.dataframe(
+            structure_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    except Exception as e:
+
+        st.error(
+            str(e)
+        )
+
+    st.divider()
+
+    # ========================================================
+    # STATISTICS
+    # ========================================================
+
     st.subheader(
         "📊 Thống kê hệ thống"
     )
@@ -2776,19 +3254,35 @@ elif menu == "⚙️ Cài đặt dữ liệu":
 
     for index, (label, table) in enumerate(tables):
 
-        count = query_one(
-            f"""
-            SELECT COUNT(*) AS total
-            FROM {table}
-            """
-        )["total"]
+        try:
 
-        cols[index % 4].metric(
-            label,
-            count
-        )
+            count = query_one(
+                f"""
+                SELECT COUNT(*) AS total
+                FROM `{table}`
+                """
+            )["total"]
+
+            cols[
+                index % 4
+            ].metric(
+                label,
+                count
+            )
+
+        except Exception as e:
+
+            cols[
+                index % 4
+            ].error(
+                f"{table}: {e}"
+            )
 
     st.divider()
+
+    # ========================================================
+    # TEST MYSQL
+    # ========================================================
 
     st.subheader(
         "🔄 Kiểm tra database"
@@ -2834,6 +3328,10 @@ elif menu == "⚙️ Cài đặt dữ liệu":
             )
 
     st.divider()
+
+    # ========================================================
+    # ARCHITECTURE
+    # ========================================================
 
     st.subheader(
         "🧭 Kiến trúc TourMate"
