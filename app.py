@@ -153,7 +153,7 @@ MYSQL_CONFIG = {
     "user": "avnadmin",
 
     # DÁN MẬT KHẨU AIVEN CỦA EM VÀO ĐÂY
-    "password": "YOUR_AIVEN_PASSWORD",
+    "password": "AVNS_zBDlzsF9I5fC-EdWcl0",
 
     "database": "defaultdb",
     "charset": "utf8mb4",
