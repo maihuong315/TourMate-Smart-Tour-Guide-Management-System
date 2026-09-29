@@ -38,9 +38,9 @@ MYSQL_DATABASE = "defaultdb"
 # =========================================================
 
 # DÁN GROQ API KEY CỦA EM VÀO ĐÂY
-GROQ_API_KEY = "DAN_GROQ_API_KEY_CUA_EM_VAO_DAY"
+GROQ_API_KEY = "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"
 
-GROQ_MODEL = "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"
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 
 # =========================================================
