@@ -1,6 +1,7 @@
 import streamlit as st
 import pymysql
 
+
 # =========================================================
 # CẤU HÌNH TRANG
 # =========================================================
@@ -25,22 +26,23 @@ MYSQL_DATABASE = "defaultdb"
 
 
 # =========================================================
-# CẤU HÌNH GEMINI AI
+# CẤU HÌNH GROQ AI
 # =========================================================
 #
-# QUAN TRỌNG:
-# Dán API KEY MỚI của em vào đây.
-# Không gửi API key cho người khác.
+# EM CHỈ CẦN THAY DÒNG BÊN DƯỚI
+# BẰNG GROQ API KEY CỦA EM.
+#
+# KHÔNG GỬI API KEY CHO ANH.
 #
 # Ví dụ:
-# GEMINI_API_KEY = "AQ.Ab8RN6KbProWs6LZSiVGs4yLQ5m61e02r6bJGww-PKrIyWfhZA"
+# GROQ_API_KEY = "gsk_xxxxxxxxxxxxxxxxx"
 #
 
-GEMINI_API_KEY = "AQ.Ab8RN6LjtOnErM2eW8PoEUdcoJLzeloehuYlCl_HF8fUZL0L_Q"
-
+GROQ_API_KEY = "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"
 
 # Model hiện tại
-GEMINI_MODEL = "gemini-3.5-flash-lite"
+# Groq hiện khuyến nghị các model GPT-OSS mới
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 
 # =========================================================
@@ -105,63 +107,64 @@ if db:
 
 
 # =========================================================
-# GEMINI AI
+# GROQ AI
 # =========================================================
 
-gemini_client = None
-GEMINI_AVAILABLE = False
-GEMINI_ERROR = ""
+groq_client = None
+GROQ_AVAILABLE = False
+GROQ_ERROR = ""
+
 
 try:
 
-    from google import genai
+    from groq import Groq
 
     # -----------------------------------------------------
     # Kiểm tra API Key
     # -----------------------------------------------------
 
-    if not GEMINI_API_KEY:
+    if not GROQ_API_KEY:
 
-        GEMINI_ERROR = (
-            "Chưa nhập Gemini API Key."
+        GROQ_ERROR = (
+            "Chưa nhập Groq API Key."
         )
 
-    elif GEMINI_API_KEY == "DAN_API_KEY_MOI_CUA_EM_VAO_DAY":
+    elif GROQ_API_KEY == "DAN_GROQ_API_KEY_CUA_EM_VAO_DAY":
 
-        GEMINI_ERROR = (
+        GROQ_ERROR = (
             "Bạn chưa thay API Key mẫu bằng API Key thật."
         )
 
     else:
 
         # -------------------------------------------------
-        # Tạo Gemini Client
+        # Tạo Groq Client
         # -------------------------------------------------
 
-        gemini_client = genai.Client(
-            api_key=GEMINI_API_KEY.strip()
+        groq_client = Groq(
+            api_key=GROQ_API_KEY.strip()
         )
 
-        GEMINI_AVAILABLE = True
+        GROQ_AVAILABLE = True
 
 
 except ImportError:
 
-    gemini_client = None
-    GEMINI_AVAILABLE = False
+    groq_client = None
+    GROQ_AVAILABLE = False
 
-    GEMINI_ERROR = (
-        "Chưa cài thư viện google-genai. "
-        "Hãy thêm google-genai vào requirements.txt."
+    GROQ_ERROR = (
+        "Chưa cài thư viện groq. "
+        "Hãy thêm groq vào requirements.txt."
     )
 
 
 except Exception as e:
 
-    gemini_client = None
-    GEMINI_AVAILABLE = False
+    groq_client = None
+    GROQ_AVAILABLE = False
 
-    GEMINI_ERROR = str(e)
+    GROQ_ERROR = str(e)
 
 
 # =========================================================
@@ -174,11 +177,11 @@ def ask_tourmate_ai(question, history):
     # Kiểm tra client
     # -----------------------------------------------------
 
-    if not GEMINI_AVAILABLE or gemini_client is None:
+    if not GROQ_AVAILABLE or groq_client is None:
 
         return (
-            "⚠️ TourMate AI chưa được cấu hình.\n\n"
-            f"Chi tiết: {GEMINI_ERROR}"
+            "⚠️ **TourMate AI chưa được cấu hình.**\n\n"
+            f"Chi tiết: `{GROQ_ERROR}`"
         )
 
     try:
@@ -205,6 +208,8 @@ NHIỆM VỤ:
 8. Hỗ trợ tổ chức tour.
 9. Giải thích các thuật ngữ trong ngành du lịch.
 10. Hỗ trợ xây dựng ý tưởng tour.
+11. Hỗ trợ xây dựng lịch trình theo thời gian.
+12. Hỗ trợ hướng dẫn viên xử lý vấn đề trong đoàn.
 
 QUY TẮC TRẢ LỜI:
 
@@ -212,20 +217,34 @@ QUY TẮC TRẢ LỜI:
 - Ngắn gọn nhưng hữu ích.
 - Ưu tiên hướng dẫn thực tế.
 - Khi cần, sử dụng danh sách đánh số.
+- Có thể dùng bảng khi phù hợp.
 - Không tự bịa thông tin.
 - Nếu không chắc chắn, nói rõ điều đó.
 - Nếu câu hỏi liên quan đến giá vé,
   giờ mở cửa, thời tiết hoặc quy định mới,
   hãy nói rõ cần kiểm tra nguồn chính thức.
+- Không khẳng định thông tin thời gian thực nếu
+  không có dữ liệu trực tiếp.
 - Thân thiện và chuyên nghiệp.
 - Người sử dụng là hướng dẫn viên du lịch.
+- Ưu tiên những câu trả lời có thể áp dụng
+  ngay trong thực tế tour.
 """
 
         # =================================================
-        # TẠO HỘI THOẠI
+        # TẠO DANH SÁCH HỘI THOẠI
         # =================================================
 
-        conversation = system_instruction + "\n\n"
+        messages = [
+            {
+                "role": "system",
+                "content": system_instruction
+            }
+        ]
+
+        # -------------------------------------------------
+        # Thêm lịch sử tối đa 10 tin nhắn gần nhất
+        # -------------------------------------------------
 
         for item in history[-10:]:
 
@@ -235,31 +254,45 @@ QUY TẮC TRẢ LỜI:
             if not content:
                 continue
 
-            if role == "user":
+            if role not in [
+                "user",
+                "assistant"
+            ]:
 
-                conversation += (
-                    f"Hướng dẫn viên: {content}\n"
-                )
+                continue
 
-            elif role == "assistant":
+            messages.append(
+                {
+                    "role": role,
+                    "content": content
+                }
+            )
 
-                conversation += (
-                    f"TourMate AI: {content}\n"
-                )
+        # -------------------------------------------------
+        # Thêm câu hỏi hiện tại
+        # -------------------------------------------------
 
-        conversation += (
-            "\nHướng dẫn viên: "
-            + question
-            + "\nTourMate AI:"
+        messages.append(
+            {
+                "role": "user",
+                "content": question
+            }
         )
 
         # =================================================
-        # GỌI GEMINI
+        # GỌI GROQ
         # =================================================
 
-        response = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=conversation
+        response = groq_client.chat.completions.create(
+
+            model=GROQ_MODEL,
+
+            messages=messages,
+
+            temperature=0.6,
+
+            max_completion_tokens=1200
+
         )
 
         # =================================================
@@ -269,18 +302,24 @@ QUY TẮC TRẢ LỜI:
         if response is None:
 
             return (
-                "⚠️ Gemini không trả về phản hồi."
+                "⚠️ Groq không trả về phản hồi."
             )
 
-        if hasattr(response, "text"):
+        if not response.choices:
 
-            if response.text:
+            return (
+                "⚠️ Groq đã nhận câu hỏi "
+                "nhưng không trả về nội dung."
+            )
 
-                return response.text.strip()
+        answer = response.choices[0].message.content
+
+        if answer:
+
+            return answer.strip()
 
         return (
-            "⚠️ Gemini đã nhận câu hỏi nhưng "
-            "không trả về nội dung."
+            "⚠️ TourMate AI không trả về nội dung."
         )
 
     # =====================================================
@@ -292,50 +331,77 @@ QUY TẮC TRẢ LỜI:
         error_text = str(e)
 
         # -------------------------------------------------
-        # Lỗi 401
+        # LỖI API KEY
         # -------------------------------------------------
 
-        if "401" in error_text or "UNAUTHENTICATED" in error_text:
+        if (
+            "401" in error_text
+            or "authentication" in error_text.lower()
+            or "invalid_api_key" in error_text.lower()
+            or "unauthorized" in error_text.lower()
+        ):
 
             return (
-                "🔐 **Gemini API xác thực thất bại.**\n\n"
-                "Lỗi trả về:\n\n"
-                f"`{error_text}`\n\n"
-                "### Cần kiểm tra\n"
-                "1. API Key có còn hoạt động không.\n"
-                "2. API Key có được tạo trong đúng Google Cloud "
-                "Project không.\n"
-                "3. Generative Language API đã được bật chưa.\n"
-                "4. Nếu key bắt đầu bằng `AQ.`, có thể project/key "
-                "đang gặp lỗi xác thực của hệ thống Google.\n\n"
-                "👉 Hãy kiểm tra API Key trong Google AI Studio."
+                "🔐 **Groq API Key không hợp lệ.**\n\n"
+                "Em hãy kiểm tra lại API Key trong Groq Console.\n\n"
+                "Chi tiết lỗi:\n\n"
+                f"`{error_text}`"
             )
 
         # -------------------------------------------------
-        # Lỗi 404
+        # LỖI 403
         # -------------------------------------------------
 
-        if "404" in error_text or "NOT_FOUND" in error_text:
+        if "403" in error_text:
 
             return (
-                "⚠️ **Model Gemini không khả dụng.**\n\n"
-                f"Chi tiết:\n`{error_text}`\n\n"
-                f"Model hiện tại: `{GEMINI_MODEL}`"
+                "🚫 **Groq từ chối yêu cầu.**\n\n"
+                "Có thể API Key không có quyền sử dụng "
+                "model này hoặc tài khoản đang bị giới hạn.\n\n"
+                f"Chi tiết:\n`{error_text}`"
             )
 
         # -------------------------------------------------
-        # Lỗi 429
+        # LỖI 404
         # -------------------------------------------------
 
-        if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+        if "404" in error_text:
 
             return (
-                "⏳ **Gemini đang giới hạn số lượng yêu cầu.**\n\n"
-                "Em hãy chờ một lúc rồi thử lại."
+                "⚠️ **Model AI không khả dụng.**\n\n"
+                f"Model hiện tại: `{GROQ_MODEL}`\n\n"
+                f"Chi tiết:\n`{error_text}`"
             )
 
         # -------------------------------------------------
-        # Lỗi khác
+        # LỖI 429
+        # -------------------------------------------------
+
+        if (
+            "429" in error_text
+            or "rate_limit" in error_text.lower()
+            or "rate limit" in error_text.lower()
+        ):
+
+            return (
+                "⏳ **Groq đang giới hạn số lượng yêu cầu.**\n\n"
+                "Em hãy chờ một chút rồi thử lại."
+            )
+
+        # -------------------------------------------------
+        # LỖI MODEL
+        # -------------------------------------------------
+
+        if "model" in error_text.lower():
+
+            return (
+                "⚠️ **Có vấn đề với model AI.**\n\n"
+                f"Model hiện tại: `{GROQ_MODEL}`\n\n"
+                f"Chi tiết:\n`{error_text}`"
+            )
+
+        # -------------------------------------------------
+        # LỖI KHÁC
         # -------------------------------------------------
 
         return (
@@ -407,6 +473,14 @@ st.markdown("""
     padding: 20px;
     border-radius: 15px;
     margin-bottom: 20px;
+}
+
+.chat-title h2 {
+    margin-bottom: 5px;
+}
+
+.chat-title p {
+    margin-bottom: 0;
 }
 
 </style>
@@ -483,19 +557,19 @@ with st.sidebar:
         )
 
     # -----------------------------------------------------
-    # GEMINI STATUS
+    # AI STATUS
     # -----------------------------------------------------
 
-    if GEMINI_AVAILABLE:
+    if GROQ_AVAILABLE:
 
         st.success(
-            "🤖 Gemini đã được cấu hình"
+            "🤖 TourMate AI đã cấu hình"
         )
 
     else:
 
         st.warning(
-            "⚠️ Gemini chưa cấu hình"
+            "⚠️ TourMate AI chưa cấu hình"
         )
 
 
@@ -1130,22 +1204,22 @@ elif menu == "🤖 TourMate AI":
     # TRẠNG THÁI AI
     # =====================================================
 
-    if GEMINI_AVAILABLE:
+    if GROQ_AVAILABLE:
 
         st.success(
-            f"🟢 Gemini đã được cấu hình — Model: {GEMINI_MODEL}"
+            f"🟢 TourMate AI đã kết nối — Model: {GROQ_MODEL}"
         )
 
     else:
 
         st.warning(
-            "⚠️ Gemini chưa được cấu hình."
+            "⚠️ TourMate AI chưa được cấu hình."
         )
 
-        if GEMINI_ERROR:
+        if GROQ_ERROR:
 
             st.code(
-                GEMINI_ERROR
+                GROQ_ERROR
             )
 
     # =====================================================
@@ -1379,26 +1453,30 @@ elif menu == "⚙️ Cài đặt":
         "### 🤖 AI Assistant"
     )
 
-    if GEMINI_AVAILABLE:
+    if GROQ_AVAILABLE:
 
         st.success(
-            "🟢 Gemini AI đã được cấu hình."
+            "🟢 TourMate AI đã được cấu hình."
         )
 
         st.write(
-            f"**Model:** `{GEMINI_MODEL}`"
+            "**Nhà cung cấp:** Groq"
+        )
+
+        st.write(
+            f"**Model:** `{GROQ_MODEL}`"
         )
 
     else:
 
         st.warning(
-            "🟡 Gemini AI chưa được cấu hình."
+            "🟡 TourMate AI chưa được cấu hình."
         )
 
-        if GEMINI_ERROR:
+        if GROQ_ERROR:
 
             st.code(
-                GEMINI_ERROR
+                GROQ_ERROR
             )
 
     # =====================================================
@@ -1416,7 +1494,7 @@ elif menu == "⚙️ Cài đặt":
     )
 
     st.write(
-        "**Phiên bản:** 1.2"
+        "**Phiên bản:** 1.3"
     )
 
     st.write(
@@ -1428,7 +1506,7 @@ elif menu == "⚙️ Cài đặt":
     )
 
     st.write(
-        "**AI:** Google Gemini"
+        "**AI:** Groq + GPT-OSS"
     )
 
 
