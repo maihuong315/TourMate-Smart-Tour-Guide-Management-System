@@ -27,8 +27,20 @@ MYSQL_DATABASE = "defaultdb"
 # =========================================================
 # CẤU HÌNH GEMINI AI
 # =========================================================
+#
+# QUAN TRỌNG:
+# Dán API KEY MỚI của em vào đây.
+# Không gửi API key cho người khác.
+#
+# Ví dụ:
+# GEMINI_API_KEY = "AQ.Ab8RN6KbProWs6LZSiVGs4yLQ5m61e02r6bJGww-PKrIyWfhZA"
+#
 
-GEMINI_API_KEY = "AQ.Ab8RN6KrkCxropaBkHu-4GafsikvB1ElB6QqwhHjrXEKqdi2MA"
+GEMINI_API_KEY = "AQ.Ab8RN6KbProWs6LZSiVGs4yLQ5m61e02r6bJGww-PKrIyWfhZA"
+
+
+# Model hiện tại
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 
 # =========================================================
@@ -37,7 +49,9 @@ GEMINI_API_KEY = "AQ.Ab8RN6KrkCxropaBkHu-4GafsikvB1ElB6QqwhHjrXEKqdi2MA"
 
 @st.cache_resource
 def get_connection():
+
     try:
+
         connection = pymysql.connect(
             host=MYSQL_HOST,
             port=MYSQL_PORT,
@@ -54,8 +68,10 @@ def get_connection():
         return connection
 
     except Exception as e:
+
         st.error("❌ Không thể kết nối MySQL Aiven.")
         st.code(str(e))
+
         return None
 
 
@@ -68,15 +84,23 @@ db = get_connection()
 mysql_status = False
 
 if db:
+
     try:
+
         with db.cursor() as cursor:
-            cursor.execute("SELECT 1 AS connected")
+
+            cursor.execute(
+                "SELECT 1 AS connected"
+            )
+
             result = cursor.fetchone()
 
         if result and result["connected"] == 1:
+
             mysql_status = True
 
     except Exception:
+
         mysql_status = False
 
 
@@ -84,42 +108,84 @@ if db:
 # GEMINI AI
 # =========================================================
 
+gemini_client = None
+GEMINI_AVAILABLE = False
+GEMINI_ERROR = ""
+
 try:
+
     from google import genai
 
-    if GEMINI_API_KEY and GEMINI_API_KEY != "DÁN_GEMINI_API_KEY_CỦA_EM_VÀO_ĐÂY":
+    # -----------------------------------------------------
+    # Kiểm tra API Key
+    # -----------------------------------------------------
+
+    if not GEMINI_API_KEY:
+
+        GEMINI_ERROR = (
+            "Chưa nhập Gemini API Key."
+        )
+
+    elif GEMINI_API_KEY == "DAN_API_KEY_MOI_CUA_EM_VAO_DAY":
+
+        GEMINI_ERROR = (
+            "Bạn chưa thay API Key mẫu bằng API Key thật."
+        )
+
+    else:
+
+        # -------------------------------------------------
+        # Tạo Gemini Client
+        # -------------------------------------------------
 
         gemini_client = genai.Client(
-            api_key=GEMINI_API_KEY
+            api_key=GEMINI_API_KEY.strip()
         )
 
         GEMINI_AVAILABLE = True
 
-    else:
 
-        gemini_client = None
-        GEMINI_AVAILABLE = False
-
-except Exception:
+except ImportError:
 
     gemini_client = None
     GEMINI_AVAILABLE = False
 
+    GEMINI_ERROR = (
+        "Chưa cài thư viện google-genai. "
+        "Hãy thêm google-genai vào requirements.txt."
+    )
+
+
+except Exception as e:
+
+    gemini_client = None
+    GEMINI_AVAILABLE = False
+
+    GEMINI_ERROR = str(e)
+
 
 # =========================================================
-# HÀM GỌI AI
+# HÀM GỌI TOURMATE AI
 # =========================================================
 
 def ask_tourmate_ai(question, history):
 
-    if not GEMINI_AVAILABLE:
+    # -----------------------------------------------------
+    # Kiểm tra client
+    # -----------------------------------------------------
+
+    if not GEMINI_AVAILABLE or gemini_client is None:
+
         return (
-            "⚠️ Chatbot AI chưa được cấu hình.\n\n"
-            "Em hãy thêm Gemini API Key vào biến "
-            "`GEMINI_API_KEY` trong app.py."
+            "⚠️ TourMate AI chưa được cấu hình.\n\n"
+            f"Chi tiết: {GEMINI_ERROR}"
         )
 
     try:
+
+        # =================================================
+        # SYSTEM INSTRUCTION
+        # =================================================
 
         system_instruction = """
 Bạn là TourMate AI Assistant.
@@ -127,7 +193,7 @@ Bạn là TourMate AI Assistant.
 Bạn là trợ lý AI chuyên hỗ trợ hướng dẫn viên du lịch
 và nhân viên công ty lữ hành.
 
-Nhiệm vụ của bạn:
+NHIỆM VỤ:
 
 1. Hỗ trợ lập và kiểm tra lịch trình tour.
 2. Gợi ý điểm tham quan.
@@ -138,25 +204,26 @@ Nhiệm vụ của bạn:
 7. Hỗ trợ checklist trước khi khởi hành.
 8. Hỗ trợ tổ chức tour.
 9. Giải thích các thuật ngữ trong ngành du lịch.
-10. Hỗ trợ lên ý tưởng tour.
+10. Hỗ trợ xây dựng ý tưởng tour.
 
-Quy tắc trả lời:
+QUY TẮC TRẢ LỜI:
 
 - Trả lời bằng tiếng Việt.
 - Ngắn gọn nhưng hữu ích.
-- Ưu tiên các bước thực tế.
+- Ưu tiên hướng dẫn thực tế.
 - Khi cần, sử dụng danh sách đánh số.
-- Không bịa thông tin nếu không chắc chắn.
-- Nếu câu hỏi liên quan đến thông tin hiện tại
-  như giờ mở cửa, giá vé, thời tiết hoặc quy định mới,
-  hãy nói rõ rằng cần kiểm tra nguồn chính thức.
-- Luôn giữ phong cách thân thiện, chuyên nghiệp.
+- Không tự bịa thông tin.
+- Nếu không chắc chắn, nói rõ điều đó.
+- Nếu câu hỏi liên quan đến giá vé,
+  giờ mở cửa, thời tiết hoặc quy định mới,
+  hãy nói rõ cần kiểm tra nguồn chính thức.
+- Thân thiện và chuyên nghiệp.
 - Người sử dụng là hướng dẫn viên du lịch.
 """
 
-        # -----------------------------------------------------
-        # Tạo nội dung có lịch sử hội thoại
-        # -----------------------------------------------------
+        # =================================================
+        # TẠO HỘI THOẠI
+        # =================================================
 
         conversation = system_instruction + "\n\n"
 
@@ -165,33 +232,115 @@ Quy tắc trả lời:
             role = item.get("role", "")
             content = item.get("content", "")
 
+            if not content:
+                continue
+
             if role == "user":
-                conversation += f"HDV: {content}\n"
+
+                conversation += (
+                    f"Hướng dẫn viên: {content}\n"
+                )
 
             elif role == "assistant":
-                conversation += f"TourMate AI: {content}\n"
 
-        conversation += f"\nHDV: {question}\nTourMate AI:"
+                conversation += (
+                    f"TourMate AI: {content}\n"
+                )
 
-        # -----------------------------------------------------
-        # Gọi Gemini
-        # -----------------------------------------------------
+        conversation += (
+            "\nHướng dẫn viên: "
+            + question
+            + "\nTourMate AI:"
+        )
+
+        # =================================================
+        # GỌI GEMINI
+        # =================================================
 
         response = gemini_client.models.generate_content(
-            model="gemini-3.5-flash-lite",
+            model=GEMINI_MODEL,
             contents=conversation
         )
 
-        if response and response.text:
-            return response.text
+        # =================================================
+        # KIỂM TRA RESPONSE
+        # =================================================
 
-        return "⚠️ AI không trả về nội dung."
+        if response is None:
+
+            return (
+                "⚠️ Gemini không trả về phản hồi."
+            )
+
+        if hasattr(response, "text"):
+
+            if response.text:
+
+                return response.text.strip()
+
+        return (
+            "⚠️ Gemini đã nhận câu hỏi nhưng "
+            "không trả về nội dung."
+        )
+
+    # =====================================================
+    # XỬ LÝ LỖI
+    # =====================================================
 
     except Exception as e:
 
+        error_text = str(e)
+
+        # -------------------------------------------------
+        # Lỗi 401
+        # -------------------------------------------------
+
+        if "401" in error_text or "UNAUTHENTICATED" in error_text:
+
+            return (
+                "🔐 **Gemini API xác thực thất bại.**\n\n"
+                "Lỗi trả về:\n\n"
+                f"`{error_text}`\n\n"
+                "### Cần kiểm tra\n"
+                "1. API Key có còn hoạt động không.\n"
+                "2. API Key có được tạo trong đúng Google Cloud "
+                "Project không.\n"
+                "3. Generative Language API đã được bật chưa.\n"
+                "4. Nếu key bắt đầu bằng `AQ.`, có thể project/key "
+                "đang gặp lỗi xác thực của hệ thống Google.\n\n"
+                "👉 Hãy kiểm tra API Key trong Google AI Studio."
+            )
+
+        # -------------------------------------------------
+        # Lỗi 404
+        # -------------------------------------------------
+
+        if "404" in error_text or "NOT_FOUND" in error_text:
+
+            return (
+                "⚠️ **Model Gemini không khả dụng.**\n\n"
+                f"Chi tiết:\n`{error_text}`\n\n"
+                f"Model hiện tại: `{GEMINI_MODEL}`"
+            )
+
+        # -------------------------------------------------
+        # Lỗi 429
+        # -------------------------------------------------
+
+        if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+
+            return (
+                "⏳ **Gemini đang giới hạn số lượng yêu cầu.**\n\n"
+                "Em hãy chờ một lúc rồi thử lại."
+            )
+
+        # -------------------------------------------------
+        # Lỗi khác
+        # -------------------------------------------------
+
         return (
-            "❌ Chatbot gặp lỗi khi kết nối AI.\n\n"
-            f"Chi tiết: `{str(e)}`"
+            "❌ **TourMate AI gặp lỗi.**\n\n"
+            f"Chi tiết:\n`{error_text}`"
         )
 
 
@@ -292,7 +441,9 @@ with st.sidebar:
 
     st.markdown("## 🧭 TOURMATE")
 
-    st.caption("Smart Tour Guide Management System")
+    st.caption(
+        "Smart Tour Guide Management System"
+    )
 
     st.divider()
 
@@ -315,15 +466,37 @@ with st.sidebar:
 
     st.divider()
 
+    # -----------------------------------------------------
+    # MYSQL STATUS
+    # -----------------------------------------------------
+
     if mysql_status:
-        st.success("🟢 MySQL Aiven đã kết nối")
+
+        st.success(
+            "🟢 MySQL Aiven đã kết nối"
+        )
+
     else:
-        st.error("🔴 MySQL chưa kết nối")
+
+        st.error(
+            "🔴 MySQL chưa kết nối"
+        )
+
+    # -----------------------------------------------------
+    # GEMINI STATUS
+    # -----------------------------------------------------
 
     if GEMINI_AVAILABLE:
-        st.success("🤖 AI đã sẵn sàng")
+
+        st.success(
+            "🤖 Gemini đã được cấu hình"
+        )
+
     else:
-        st.warning("⚠️ AI chưa cấu hình")
+
+        st.warning(
+            "⚠️ Gemini chưa cấu hình"
+        )
 
 
 # =========================================================
@@ -332,11 +505,13 @@ with st.sidebar:
 
 if menu == "🏠 Dashboard":
 
-    st.subheader("👋 Chào mừng đến với TourMate")
+    st.subheader(
+        "👋 Chào mừng đến với TourMate"
+    )
 
     st.write(
-        "Hệ thống hỗ trợ hướng dẫn viên quản lý toàn bộ công việc "
-        "trong quá trình dẫn tour."
+        "Hệ thống hỗ trợ hướng dẫn viên quản lý "
+        "toàn bộ công việc trong quá trình dẫn tour."
     )
 
     st.divider()
@@ -379,7 +554,9 @@ if menu == "🏠 Dashboard":
 
     with col1:
 
-        st.markdown("### 🚌 Tour sắp diễn ra")
+        st.markdown(
+            "### 🚌 Tour sắp diễn ra"
+        )
 
         st.markdown("""
         <div class="card">
@@ -409,18 +586,39 @@ if menu == "🏠 Dashboard":
 
     with col2:
 
-        st.markdown("### ✅ Checklist hôm nay")
+        st.markdown(
+            "### ✅ Checklist hôm nay"
+        )
 
-        st.checkbox("Kiểm tra danh sách khách")
-        st.checkbox("Kiểm tra xe")
-        st.checkbox("Kiểm tra phòng khách sạn")
-        st.checkbox("Chuẩn bị nước uống")
-        st.checkbox("Chuẩn bị micro")
-        st.checkbox("Kiểm tra vé tham quan")
+        st.checkbox(
+            "Kiểm tra danh sách khách"
+        )
+
+        st.checkbox(
+            "Kiểm tra xe"
+        )
+
+        st.checkbox(
+            "Kiểm tra phòng khách sạn"
+        )
+
+        st.checkbox(
+            "Chuẩn bị nước uống"
+        )
+
+        st.checkbox(
+            "Chuẩn bị micro"
+        )
+
+        st.checkbox(
+            "Kiểm tra vé tham quan"
+        )
 
     st.divider()
 
-    st.markdown("### 📊 Tình trạng hoạt động")
+    st.markdown(
+        "### 📊 Tình trạng hoạt động"
+    )
 
     data = {
         "Hạng mục": [
@@ -452,18 +650,25 @@ if menu == "🏠 Dashboard":
 
 elif menu == "🚌 Quản lý Tour":
 
-    st.subheader("🚌 Quản lý Tour")
+    st.subheader(
+        "🚌 Quản lý Tour"
+    )
 
-    tab1, tab2 = st.tabs([
-        "📋 Danh sách tour",
-        "➕ Tạo tour"
-    ])
+    tab1, tab2 = st.tabs(
+        [
+            "📋 Danh sách tour",
+            "➕ Tạo tour"
+        ]
+    )
 
     with tab1:
 
-        st.markdown("### Danh sách tour")
+        st.markdown(
+            "### Danh sách tour"
+        )
 
         tours = [
+
             {
                 "Mã tour": "VT001",
                 "Tên tour": "Vũng Tàu 2N1Đ",
@@ -473,6 +678,7 @@ elif menu == "🚌 Quản lý Tour":
                 "HDV": "Nguyễn Minh Anh",
                 "Trạng thái": "Đang chạy"
             },
+
             {
                 "Mã tour": "DL002",
                 "Tên tour": "Đà Lạt 3N2Đ",
@@ -482,6 +688,7 @@ elif menu == "🚌 Quản lý Tour":
                 "HDV": "Trần Ngọc Mai",
                 "Trạng thái": "Sắp khởi hành"
             },
+
             {
                 "Mã tour": "PQ003",
                 "Tên tour": "Phú Quốc 4N3Đ",
@@ -491,6 +698,7 @@ elif menu == "🚌 Quản lý Tour":
                 "HDV": "Lê Hoàng Nam",
                 "Trạng thái": "Đã lên lịch"
             }
+
         ]
 
         st.dataframe(
@@ -501,17 +709,25 @@ elif menu == "🚌 Quản lý Tour":
 
     with tab2:
 
-        st.markdown("### ➕ Tạo tour mới")
+        st.markdown(
+            "### ➕ Tạo tour mới"
+        )
 
-        with st.form("create_tour"):
+        with st.form(
+            "create_tour"
+        ):
 
             col1, col2 = st.columns(2)
 
             with col1:
 
-                code = st.text_input("Mã tour")
+                code = st.text_input(
+                    "Mã tour"
+                )
 
-                name = st.text_input("Tên tour")
+                name = st.text_input(
+                    "Tên tour"
+                )
 
                 start = st.date_input(
                     "Ngày bắt đầu"
@@ -555,9 +771,12 @@ elif menu == "🚌 Quản lý Tour":
 
 elif menu == "📅 Lịch trình":
 
-    st.subheader("📅 Lịch trình tour")
+    st.subheader(
+        "📅 Lịch trình tour"
+    )
 
     schedule = [
+
         ["07:00", "Tập trung", "Bãi Sau Vũng Tàu"],
         ["08:00", "Khởi hành", "Bãi Sau"],
         ["09:00", "Tham quan", "Tượng Chúa Kitô"],
@@ -565,7 +784,8 @@ elif menu == "📅 Lịch trình":
         ["12:00", "Ăn trưa", "Nhà hàng địa phương"],
         ["14:00", "Nghỉ ngơi", "Khách sạn"],
         ["16:00", "Tham quan", "Bạch Dinh"],
-        ["18:30", "Ăn tối", "Nhà hàng"],
+        ["18:30", "Ăn tối", "Nhà hàng"]
+
     ]
 
     st.dataframe(
@@ -586,14 +806,18 @@ elif menu == "📅 Lịch trình":
 
 elif menu == "👥 Khách hàng":
 
-    st.subheader("👥 Quản lý khách hàng")
+    st.subheader(
+        "👥 Quản lý khách hàng"
+    )
 
     guests = [
+
         ["KH001", "Nguyễn Văn An", "0901234567", "VT001"],
         ["KH002", "Trần Thị Bình", "0912345678", "VT001"],
         ["KH003", "Lê Minh Đức", "0923456789", "VT001"],
         ["KH004", "Phạm Ngọc Anh", "0934567890", "DL002"],
-        ["KH005", "Hoàng Văn Nam", "0945678901", "DL002"],
+        ["KH005", "Hoàng Văn Nam", "0945678901", "DL002"]
+
     ]
 
     st.dataframe(
@@ -615,13 +839,18 @@ elif menu == "👥 Khách hàng":
 
 elif menu == "✅ Checklist":
 
-    st.subheader("✅ Checklist hướng dẫn viên")
+    st.subheader(
+        "✅ Checklist hướng dẫn viên"
+    )
 
     st.progress(70)
 
-    st.write("7 / 10 nhiệm vụ đã hoàn thành")
+    st.write(
+        "7 / 10 nhiệm vụ đã hoàn thành"
+    )
 
     tasks = [
+
         "Kiểm tra danh sách khách",
         "Kiểm tra giấy tờ",
         "Kiểm tra xe",
@@ -632,6 +861,7 @@ elif menu == "✅ Checklist":
         "Chuẩn bị micro",
         "Kiểm tra vé",
         "Kiểm tra lịch trình"
+
     ]
 
     for i, task in enumerate(tasks):
@@ -658,14 +888,18 @@ elif menu == "✅ Checklist":
 
 elif menu == "📍 Điểm tham quan":
 
-    st.subheader("📍 Thư viện điểm tham quan")
+    st.subheader(
+        "📍 Thư viện điểm tham quan"
+    )
 
     col1, col2, col3 = st.columns(3)
 
     places = [
+
         ("🏔️", "Tượng Chúa Kitô", "Vũng Tàu"),
         ("🏛️", "Bạch Dinh", "Vũng Tàu"),
-        ("🌊", "Bãi Sau", "Vũng Tàu"),
+        ("🌊", "Bãi Sau", "Vũng Tàu")
+
     ]
 
     for col, place in zip(
@@ -699,7 +933,9 @@ elif menu == "📍 Điểm tham quan":
 
 elif menu == "🎤 Thư viện thuyết minh":
 
-    st.subheader("🎤 Thư viện thuyết minh")
+    st.subheader(
+        "🎤 Thư viện thuyết minh"
+    )
 
     place = st.selectbox(
         "Chọn điểm tham quan",
@@ -715,31 +951,34 @@ elif menu == "🎤 Thư viện thuyết minh":
 
         "Tượng Chúa Kitô":
             """
-            Tượng Chúa Kitô Vua là một trong những biểu tượng
-            nổi tiếng của thành phố Vũng Tàu.
-            Công trình nằm trên núi Nhỏ và hướng ra biển.
-            """,
+Tượng Chúa Kitô Vua là một trong những biểu tượng
+nổi tiếng của thành phố Vũng Tàu.
+Công trình nằm trên núi Nhỏ và hướng ra biển.
+""",
 
         "Bạch Dinh":
             """
-            Bạch Dinh là công trình kiến trúc mang dấu ấn
-            châu Âu nằm trên sườn núi Lớn tại Vũng Tàu.
-            """,
+Bạch Dinh là công trình kiến trúc mang dấu ấn
+châu Âu nằm trên sườn núi Lớn tại Vũng Tàu.
+""",
 
         "Hải đăng Vũng Tàu":
             """
-            Hải đăng Vũng Tàu là một trong những ngọn hải đăng
-            lâu đời và là điểm ngắm cảnh nổi tiếng của thành phố.
-            """,
+Hải đăng Vũng Tàu là một trong những ngọn hải đăng
+lâu đời và là điểm ngắm cảnh nổi tiếng của thành phố.
+""",
 
         "Bãi Sau":
             """
-            Bãi Sau là một trong những bãi biển nổi tiếng nhất
-            tại Vũng Tàu, thu hút đông đảo khách du lịch.
-            """
+Bãi Sau là một trong những bãi biển nổi tiếng nhất
+tại Vũng Tàu, thu hút đông đảo khách du lịch.
+"""
+
     }
 
-    st.info(scripts[place])
+    st.info(
+        scripts[place]
+    )
 
     st.text_area(
         "🎙️ Nội dung thuyết minh",
@@ -754,21 +993,26 @@ elif menu == "🎤 Thư viện thuyết minh":
 
 elif menu == "⚠️ Sự cố":
 
-    st.subheader("⚠️ Quản lý sự cố")
+    st.subheader(
+        "⚠️ Quản lý sự cố"
+    )
 
     incidents = [
+
         [
             "INC001",
             "Khách làm mất hành lý",
             "VT001",
             "Đang xử lý"
         ],
+
         [
             "INC002",
             "Xe đến trễ 15 phút",
             "DL002",
             "Đã xử lý"
         ]
+
     ]
 
     st.dataframe(
@@ -785,15 +1029,25 @@ elif menu == "⚠️ Sự cố":
 
     st.divider()
 
-    st.markdown("### ➕ Báo cáo sự cố")
+    st.markdown(
+        "### ➕ Báo cáo sự cố"
+    )
 
-    with st.form("incident_form"):
+    with st.form(
+        "incident_form"
+    ):
 
-        title = st.text_input("Tên sự cố")
+        title = st.text_input(
+            "Tên sự cố"
+        )
 
-        tour = st.text_input("Tour")
+        tour = st.text_input(
+            "Tour"
+        )
 
-        description = st.text_area("Mô tả")
+        description = st.text_area(
+            "Mô tả"
+        )
 
         submit = st.form_submit_button(
             "🚨 Báo cáo sự cố"
@@ -812,27 +1066,33 @@ elif menu == "⚠️ Sự cố":
 
 elif menu == "👨‍✈️ Hướng dẫn viên":
 
-    st.subheader("👨‍✈️ Quản lý hướng dẫn viên")
+    st.subheader(
+        "👨‍✈️ Quản lý hướng dẫn viên"
+    )
 
     guides = [
+
         [
             "HDV001",
             "Nguyễn Minh Anh",
             "0901111111",
             3
         ],
+
         [
             "HDV002",
             "Trần Ngọc Mai",
             "0902222222",
             2
         ],
+
         [
             "HDV003",
             "Lê Hoàng Nam",
             "0903333333",
             4
-        ],
+        ]
+
     ]
 
     st.dataframe(
@@ -849,7 +1109,7 @@ elif menu == "👨‍✈️ Hướng dẫn viên":
 
 
 # =========================================================
-# 🤖 TOURMATE AI
+# TOURMATE AI
 # =========================================================
 
 elif menu == "🤖 TourMate AI":
@@ -866,33 +1126,39 @@ elif menu == "🤖 TourMate AI":
     </div>
     """, unsafe_allow_html=True)
 
-    # -----------------------------------------------------
-    # Thông tin chatbot
-    # -----------------------------------------------------
+    # =====================================================
+    # TRẠNG THÁI AI
+    # =====================================================
 
     if GEMINI_AVAILABLE:
 
         st.success(
-            "🟢 TourMate AI đang hoạt động"
+            f"🟢 Gemini đã được cấu hình — Model: {GEMINI_MODEL}"
         )
 
     else:
 
         st.warning(
-            "⚠️ Chưa cấu hình Gemini API Key."
+            "⚠️ Gemini chưa được cấu hình."
         )
 
-    # -----------------------------------------------------
-    # Khởi tạo lịch sử chat
-    # -----------------------------------------------------
+        if GEMINI_ERROR:
+
+            st.code(
+                GEMINI_ERROR
+            )
+
+    # =====================================================
+    # KHỞI TẠO LỊCH SỬ
+    # =====================================================
 
     if "tourmate_messages" not in st.session_state:
 
         st.session_state.tourmate_messages = []
 
-    # -----------------------------------------------------
-    # Nút xóa hội thoại
-    # -----------------------------------------------------
+    # =====================================================
+    # NÚT XÓA CHAT
+    # =====================================================
 
     col1, col2 = st.columns([5, 1])
 
@@ -907,9 +1173,9 @@ elif menu == "🤖 TourMate AI":
 
             st.rerun()
 
-    # -----------------------------------------------------
-    # Hiển thị lịch sử
-    # -----------------------------------------------------
+    # =====================================================
+    # HIỂN THỊ LỊCH SỬ
+    # =====================================================
 
     for message in st.session_state.tourmate_messages:
 
@@ -921,11 +1187,13 @@ elif menu == "🤖 TourMate AI":
                 message["content"]
             )
 
-    # -----------------------------------------------------
-    # Gợi ý câu hỏi
-    # -----------------------------------------------------
+    # =====================================================
+    # GỢI Ý
+    # =====================================================
 
-    st.markdown("### 💡 Bạn có thể hỏi")
+    st.markdown(
+        "### 💡 Bạn có thể hỏi"
+    )
 
     suggestion1, suggestion2, suggestion3 = st.columns(3)
 
@@ -965,28 +1233,34 @@ elif menu == "🤖 TourMate AI":
                 "thì hướng dẫn viên nên xử lý như thế nào?"
             )
 
-    # -----------------------------------------------------
-    # Nhận câu hỏi
-    # -----------------------------------------------------
+    # =====================================================
+    # CHAT INPUT
+    # =====================================================
 
     question = st.chat_input(
         "💬 Nhập câu hỏi cho TourMate AI..."
     )
 
-    # Nếu bấm câu hỏi gợi ý
+    # =====================================================
+    # CÂU HỎI GỢI Ý
+    # =====================================================
+
     if "ai_question" in st.session_state:
 
         question = st.session_state.pop(
             "ai_question"
         )
 
-    # -----------------------------------------------------
-    # Xử lý câu hỏi
-    # -----------------------------------------------------
+    # =====================================================
+    # XỬ LÝ CHAT
+    # =====================================================
 
     if question:
 
+        # -------------------------------------------------
         # Lưu câu hỏi
+        # -------------------------------------------------
+
         st.session_state.tourmate_messages.append(
             {
                 "role": "user",
@@ -994,13 +1268,25 @@ elif menu == "🤖 TourMate AI":
             }
         )
 
+        # -------------------------------------------------
         # Hiển thị câu hỏi
-        with st.chat_message("user"):
+        # -------------------------------------------------
 
-            st.markdown(question)
+        with st.chat_message(
+            "user"
+        ):
 
+            st.markdown(
+                question
+            )
+
+        # -------------------------------------------------
         # Gọi AI
-        with st.chat_message("assistant"):
+        # -------------------------------------------------
+
+        with st.chat_message(
+            "assistant"
+        ):
 
             with st.spinner(
                 "🤖 TourMate AI đang suy nghĩ..."
@@ -1011,9 +1297,14 @@ elif menu == "🤖 TourMate AI":
                     st.session_state.tourmate_messages[:-1]
                 )
 
-            st.markdown(answer)
+            st.markdown(
+                answer
+            )
 
+        # -------------------------------------------------
         # Lưu câu trả lời
+        # -------------------------------------------------
+
         st.session_state.tourmate_messages.append(
             {
                 "role": "assistant",
@@ -1028,7 +1319,13 @@ elif menu == "🤖 TourMate AI":
 
 elif menu == "⚙️ Cài đặt":
 
-    st.subheader("⚙️ Cài đặt hệ thống")
+    st.subheader(
+        "⚙️ Cài đặt hệ thống"
+    )
+
+    # =====================================================
+    # MYSQL
+    # =====================================================
 
     if mysql_status:
 
@@ -1052,7 +1349,9 @@ elif menu == "⚙️ Cài đặt":
 
     st.divider()
 
-    st.write("### 🗄️ Database")
+    st.write(
+        "### 🗄️ Database"
+    )
 
     st.write(
         f"**Host:** {MYSQL_HOST}"
@@ -1070,14 +1369,24 @@ elif menu == "⚙️ Cài đặt":
         f"**User:** {MYSQL_USER}"
     )
 
+    # =====================================================
+    # AI
+    # =====================================================
+
     st.divider()
 
-    st.write("### 🤖 AI Assistant")
+    st.write(
+        "### 🤖 AI Assistant"
+    )
 
     if GEMINI_AVAILABLE:
 
         st.success(
-            "🟢 Gemini AI đã được kết nối."
+            "🟢 Gemini AI đã được cấu hình."
+        )
+
+        st.write(
+            f"**Model:** `{GEMINI_MODEL}`"
         )
 
     else:
@@ -1086,16 +1395,28 @@ elif menu == "⚙️ Cài đặt":
             "🟡 Gemini AI chưa được cấu hình."
         )
 
+        if GEMINI_ERROR:
+
+            st.code(
+                GEMINI_ERROR
+            )
+
+    # =====================================================
+    # THÔNG TIN HỆ THỐNG
+    # =====================================================
+
     st.divider()
 
-    st.write("### 📱 Thông tin hệ thống")
+    st.write(
+        "### 📱 Thông tin hệ thống"
+    )
 
     st.write(
         "**Ứng dụng:** TourMate"
     )
 
     st.write(
-        "**Phiên bản:** 1.1"
+        "**Phiên bản:** 1.2"
     )
 
     st.write(
@@ -1107,7 +1428,7 @@ elif menu == "⚙️ Cài đặt":
     )
 
     st.write(
-        "**AI:** Gemini"
+        "**AI:** Google Gemini"
     )
 
 
