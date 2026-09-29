@@ -17,77 +17,166 @@ st.set_page_config(
 # =========================================================
 # CẤU HÌNH MYSQL AIVEN
 # =========================================================
+#
+# KIỂM TRA LẠI HOST + PORT TRONG:
+# Aiven → MySQL → Overview → Connection information
+#
+# =========================================================
 
 MYSQL_HOST = "mysql-19728385-npmaihuong-927f.b.aivencloud.com"
 MYSQL_PORT = 27942
 MYSQL_USER = "avnadmin"
+
+# DÁN MẬT KHẨU MYSQL AIVEN CỦA EM VÀO ĐÂY
 MYSQL_PASSWORD = "AVNS_zBDlzsF9I5fC-EdWcl0"
+
 MYSQL_DATABASE = "defaultdb"
 
 
 # =========================================================
 # CẤU HÌNH GROQ AI
 # =========================================================
-#
-# EM CHỈ CẦN THAY DÒNG BÊN DƯỚI
-# BẰNG GROQ API KEY CỦA EM.
-#
-# KHÔNG GỬI API KEY CHO ANH.
-#
-# Ví dụ:
-# GROQ_API_KEY = "gsk_xxxxxxxxxxxxxxxxx"
-#
 
-GROQ_API_KEY = "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"
+# DÁN GROQ API KEY CỦA EM VÀO ĐÂY
+GROQ_API_KEY = "DAN_GROQ_API_KEY_CUA_EM_VAO_DAY"
 
-# Model hiện tại
-# Groq hiện khuyến nghị các model GPT-OSS mới
-GROQ_MODEL = "openai/gpt-oss-20b"
+GROQ_MODEL = "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"
 
 
 # =========================================================
-# KẾT NỐI MYSQL
+# BIẾN TRẠNG THÁI MYSQL
 # =========================================================
 
-@st.cache_resource
-def get_connection():
+db = None
+mysql_status = False
+MYSQL_LAST_ERROR = ""
+
+
+# =========================================================
+# HÀM TẠO MYSQL CONNECTION
+# =========================================================
+
+def create_mysql_connection():
 
     try:
 
         connection = pymysql.connect(
             host=MYSQL_HOST,
-            port=MYSQL_PORT,
+            port=int(MYSQL_PORT),
             user=MYSQL_USER,
             password=MYSQL_PASSWORD,
             database=MYSQL_DATABASE,
+
             charset="utf8mb4",
+
             cursorclass=pymysql.cursors.DictCursor,
-            connect_timeout=15,
-            read_timeout=15,
-            write_timeout=15
+
+            connect_timeout=20,
+            read_timeout=30,
+            write_timeout=30,
+
+            autocommit=True
         )
 
-        return connection
+        return connection, ""
 
     except Exception as e:
 
-        st.error("❌ Không thể kết nối MySQL Aiven.")
-        st.code(str(e))
+        return None, str(e)
+
+
+# =========================================================
+# HÀM KIỂM TRA MYSQL
+# =========================================================
+
+def check_mysql_connection():
+
+    connection = None
+
+    try:
+
+        connection, error = create_mysql_connection()
+
+        if connection is None:
+
+            return False, None, error
+
+        # Kiểm tra server
+        connection.ping(
+            reconnect=True
+        )
+
+        # Kiểm tra query
+        with connection.cursor() as cursor:
+
+            cursor.execute(
+                "SELECT 1 AS connected"
+            )
+
+            result = cursor.fetchone()
+
+        if result and result.get("connected") == 1:
+
+            return True, connection, ""
+
+        return (
+            False,
+            connection,
+            "MySQL kết nối được nhưng SELECT 1 không trả về kết quả."
+        )
+
+    except Exception as e:
+
+        if connection:
+
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+        return False, None, str(e)
+
+
+# =========================================================
+# HÀM LẤY MYSQL CONNECTION
+# =========================================================
+
+def get_db_connection():
+
+    global db
+    global mysql_status
+    global MYSQL_LAST_ERROR
+
+    # -----------------------------------------------------
+    # Nếu chưa có connection → tạo mới
+    # -----------------------------------------------------
+
+    if db is None:
+
+        success, new_db, error = check_mysql_connection()
+
+        if success:
+
+            db = new_db
+            mysql_status = True
+            MYSQL_LAST_ERROR = ""
+
+            return db
+
+        mysql_status = False
+        MYSQL_LAST_ERROR = error
 
         return None
 
-
-# =========================================================
-# KIỂM TRA MYSQL
-# =========================================================
-
-db = get_connection()
-
-mysql_status = False
-
-if db:
+    # -----------------------------------------------------
+    # Nếu đã có connection → ping
+    # -----------------------------------------------------
 
     try:
+
+        db.ping(
+            reconnect=True
+        )
 
         with db.cursor() as cursor:
 
@@ -97,13 +186,49 @@ if db:
 
             result = cursor.fetchone()
 
-        if result and result["connected"] == 1:
+        if result and result.get("connected") == 1:
 
             mysql_status = True
+            MYSQL_LAST_ERROR = ""
 
-    except Exception:
+            return db
 
-        mysql_status = False
+    except Exception as e:
+
+        MYSQL_LAST_ERROR = str(e)
+
+        try:
+            db.close()
+        except Exception:
+            pass
+
+        db = None
+
+    # -----------------------------------------------------
+    # Nếu connection cũ chết → thử kết nối lại
+    # -----------------------------------------------------
+
+    success, new_db, error = check_mysql_connection()
+
+    if success:
+
+        db = new_db
+        mysql_status = True
+        MYSQL_LAST_ERROR = ""
+
+        return db
+
+    mysql_status = False
+    MYSQL_LAST_ERROR = error
+
+    return None
+
+
+# =========================================================
+# KẾT NỐI MYSQL NGAY KHI APP CHẠY
+# =========================================================
+
+db = get_db_connection()
 
 
 # =========================================================
@@ -119,10 +244,6 @@ try:
 
     from groq import Groq
 
-    # -----------------------------------------------------
-    # Kiểm tra API Key
-    # -----------------------------------------------------
-
     if not GROQ_API_KEY:
 
         GROQ_ERROR = (
@@ -136,10 +257,6 @@ try:
         )
 
     else:
-
-        # -------------------------------------------------
-        # Tạo Groq Client
-        # -------------------------------------------------
 
         groq_client = Groq(
             api_key=GROQ_API_KEY.strip()
@@ -173,10 +290,6 @@ except Exception as e:
 
 def ask_tourmate_ai(question, history):
 
-    # -----------------------------------------------------
-    # Kiểm tra client
-    # -----------------------------------------------------
-
     if not GROQ_AVAILABLE or groq_client is None:
 
         return (
@@ -185,10 +298,6 @@ def ask_tourmate_ai(question, history):
         )
 
     try:
-
-        # =================================================
-        # SYSTEM INSTRUCTION
-        # =================================================
 
         system_instruction = """
 Bạn là TourMate AI Assistant.
@@ -227,13 +336,9 @@ QUY TẮC TRẢ LỜI:
   không có dữ liệu trực tiếp.
 - Thân thiện và chuyên nghiệp.
 - Người sử dụng là hướng dẫn viên du lịch.
-- Ưu tiên những câu trả lời có thể áp dụng
-  ngay trong thực tế tour.
+- Ưu tiên câu trả lời có thể áp dụng ngay
+  trong thực tế tour.
 """
-
-        # =================================================
-        # TẠO DANH SÁCH HỘI THOẠI
-        # =================================================
 
         messages = [
             {
@@ -241,10 +346,6 @@ QUY TẮC TRẢ LỜI:
                 "content": system_instruction
             }
         ]
-
-        # -------------------------------------------------
-        # Thêm lịch sử tối đa 10 tin nhắn gần nhất
-        # -------------------------------------------------
 
         for item in history[-10:]:
 
@@ -258,7 +359,6 @@ QUY TẮC TRẢ LỜI:
                 "user",
                 "assistant"
             ]:
-
                 continue
 
             messages.append(
@@ -268,10 +368,6 @@ QUY TẮC TRẢ LỜI:
                 }
             )
 
-        # -------------------------------------------------
-        # Thêm câu hỏi hiện tại
-        # -------------------------------------------------
-
         messages.append(
             {
                 "role": "user",
@@ -279,25 +375,12 @@ QUY TẮC TRẢ LỜI:
             }
         )
 
-        # =================================================
-        # GỌI GROQ
-        # =================================================
-
         response = groq_client.chat.completions.create(
-
             model=GROQ_MODEL,
-
             messages=messages,
-
             temperature=0.6,
-
             max_completion_tokens=1200
-
         )
-
-        # =================================================
-        # KIỂM TRA RESPONSE
-        # =================================================
 
         if response is None:
 
@@ -322,17 +405,9 @@ QUY TẮC TRẢ LỜI:
             "⚠️ TourMate AI không trả về nội dung."
         )
 
-    # =====================================================
-    # XỬ LÝ LỖI
-    # =====================================================
-
     except Exception as e:
 
         error_text = str(e)
-
-        # -------------------------------------------------
-        # LỖI API KEY
-        # -------------------------------------------------
 
         if (
             "401" in error_text
@@ -343,39 +418,23 @@ QUY TẮC TRẢ LỜI:
 
             return (
                 "🔐 **Groq API Key không hợp lệ.**\n\n"
-                "Em hãy kiểm tra lại API Key trong Groq Console.\n\n"
-                "Chi tiết lỗi:\n\n"
-                f"`{error_text}`"
+                "Hãy kiểm tra lại API Key trong Groq Console."
             )
-
-        # -------------------------------------------------
-        # LỖI 403
-        # -------------------------------------------------
 
         if "403" in error_text:
 
             return (
                 "🚫 **Groq từ chối yêu cầu.**\n\n"
-                "Có thể API Key không có quyền sử dụng "
-                "model này hoặc tài khoản đang bị giới hạn.\n\n"
-                f"Chi tiết:\n`{error_text}`"
+                "API Key hoặc model hiện tại không được phép sử dụng."
             )
-
-        # -------------------------------------------------
-        # LỖI 404
-        # -------------------------------------------------
 
         if "404" in error_text:
 
             return (
                 "⚠️ **Model AI không khả dụng.**\n\n"
-                f"Model hiện tại: `{GROQ_MODEL}`\n\n"
-                f"Chi tiết:\n`{error_text}`"
+                f"Model: `{GROQ_MODEL}`\n\n"
+                f"Chi tiết: `{error_text}`"
             )
-
-        # -------------------------------------------------
-        # LỖI 429
-        # -------------------------------------------------
 
         if (
             "429" in error_text
@@ -385,28 +444,12 @@ QUY TẮC TRẢ LỜI:
 
             return (
                 "⏳ **Groq đang giới hạn số lượng yêu cầu.**\n\n"
-                "Em hãy chờ một chút rồi thử lại."
+                "Hãy chờ một chút rồi thử lại."
             )
-
-        # -------------------------------------------------
-        # LỖI MODEL
-        # -------------------------------------------------
-
-        if "model" in error_text.lower():
-
-            return (
-                "⚠️ **Có vấn đề với model AI.**\n\n"
-                f"Model hiện tại: `{GROQ_MODEL}`\n\n"
-                f"Chi tiết:\n`{error_text}`"
-            )
-
-        # -------------------------------------------------
-        # LỖI KHÁC
-        # -------------------------------------------------
 
         return (
             "❌ **TourMate AI gặp lỗi.**\n\n"
-            f"Chi tiết:\n`{error_text}`"
+            f"Chi tiết: `{error_text}`"
         )
 
 
@@ -556,6 +599,14 @@ with st.sidebar:
             "🔴 MySQL chưa kết nối"
         )
 
+        if MYSQL_LAST_ERROR:
+
+            with st.expander("🔍 Xem lỗi MySQL"):
+
+                st.code(
+                    MYSQL_LAST_ERROR
+                )
+
     # -----------------------------------------------------
     # AI STATUS
     # -----------------------------------------------------
@@ -593,7 +644,6 @@ if menu == "🏠 Dashboard":
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-
         st.metric(
             "🚌 Tour hôm nay",
             "2",
@@ -601,7 +651,6 @@ if menu == "🏠 Dashboard":
         )
 
     with col2:
-
         st.metric(
             "👥 Khách hàng",
             "38",
@@ -609,14 +658,12 @@ if menu == "🏠 Dashboard":
         )
 
     with col3:
-
         st.metric(
             "📍 Điểm tham quan",
             "12"
         )
 
     with col4:
-
         st.metric(
             "⚠️ Sự cố",
             "1"
@@ -664,29 +711,12 @@ if menu == "🏠 Dashboard":
             "### ✅ Checklist hôm nay"
         )
 
-        st.checkbox(
-            "Kiểm tra danh sách khách"
-        )
-
-        st.checkbox(
-            "Kiểm tra xe"
-        )
-
-        st.checkbox(
-            "Kiểm tra phòng khách sạn"
-        )
-
-        st.checkbox(
-            "Chuẩn bị nước uống"
-        )
-
-        st.checkbox(
-            "Chuẩn bị micro"
-        )
-
-        st.checkbox(
-            "Kiểm tra vé tham quan"
-        )
+        st.checkbox("Kiểm tra danh sách khách")
+        st.checkbox("Kiểm tra xe")
+        st.checkbox("Kiểm tra phòng khách sạn")
+        st.checkbox("Chuẩn bị nước uống")
+        st.checkbox("Chuẩn bị micro")
+        st.checkbox("Kiểm tra vé tham quan")
 
     st.divider()
 
@@ -724,9 +754,7 @@ if menu == "🏠 Dashboard":
 
 elif menu == "🚌 Quản lý Tour":
 
-    st.subheader(
-        "🚌 Quản lý Tour"
-    )
+    st.subheader("🚌 Quản lý Tour")
 
     tab1, tab2 = st.tabs(
         [
@@ -737,9 +765,7 @@ elif menu == "🚌 Quản lý Tour":
 
     with tab1:
 
-        st.markdown(
-            "### Danh sách tour"
-        )
+        st.markdown("### Danh sách tour")
 
         tours = [
 
@@ -783,35 +809,23 @@ elif menu == "🚌 Quản lý Tour":
 
     with tab2:
 
-        st.markdown(
-            "### ➕ Tạo tour mới"
-        )
+        st.markdown("### ➕ Tạo tour mới")
 
-        with st.form(
-            "create_tour"
-        ):
+        with st.form("create_tour"):
 
             col1, col2 = st.columns(2)
 
             with col1:
 
-                code = st.text_input(
-                    "Mã tour"
-                )
+                code = st.text_input("Mã tour")
 
-                name = st.text_input(
-                    "Tên tour"
-                )
+                name = st.text_input("Tên tour")
 
-                start = st.date_input(
-                    "Ngày bắt đầu"
-                )
+                start = st.date_input("Ngày bắt đầu")
 
             with col2:
 
-                end = st.date_input(
-                    "Ngày kết thúc"
-                )
+                end = st.date_input("Ngày kết thúc")
 
                 guests = st.number_input(
                     "Số lượng khách",
@@ -823,9 +837,7 @@ elif menu == "🚌 Quản lý Tour":
                     "Hướng dẫn viên"
                 )
 
-            notes = st.text_area(
-                "Ghi chú"
-            )
+            notes = st.text_area("Ghi chú")
 
             submit = st.form_submit_button(
                 "💾 Lưu tour",
@@ -845,9 +857,7 @@ elif menu == "🚌 Quản lý Tour":
 
 elif menu == "📅 Lịch trình":
 
-    st.subheader(
-        "📅 Lịch trình tour"
-    )
+    st.subheader("📅 Lịch trình tour")
 
     schedule = [
 
@@ -880,9 +890,7 @@ elif menu == "📅 Lịch trình":
 
 elif menu == "👥 Khách hàng":
 
-    st.subheader(
-        "👥 Quản lý khách hàng"
-    )
+    st.subheader("👥 Quản lý khách hàng")
 
     guests = [
 
@@ -913,15 +921,11 @@ elif menu == "👥 Khách hàng":
 
 elif menu == "✅ Checklist":
 
-    st.subheader(
-        "✅ Checklist hướng dẫn viên"
-    )
+    st.subheader("✅ Checklist hướng dẫn viên")
 
     st.progress(70)
 
-    st.write(
-        "7 / 10 nhiệm vụ đã hoàn thành"
-    )
+    st.write("7 / 10 nhiệm vụ đã hoàn thành")
 
     tasks = [
 
@@ -962,9 +966,7 @@ elif menu == "✅ Checklist":
 
 elif menu == "📍 Điểm tham quan":
 
-    st.subheader(
-        "📍 Thư viện điểm tham quan"
-    )
+    st.subheader("📍 Thư viện điểm tham quan")
 
     col1, col2, col3 = st.columns(3)
 
@@ -1007,9 +1009,7 @@ elif menu == "📍 Điểm tham quan":
 
 elif menu == "🎤 Thư viện thuyết minh":
 
-    st.subheader(
-        "🎤 Thư viện thuyết minh"
-    )
+    st.subheader("🎤 Thư viện thuyết minh")
 
     place = st.selectbox(
         "Chọn điểm tham quan",
@@ -1067,9 +1067,7 @@ tại Vũng Tàu, thu hút đông đảo khách du lịch.
 
 elif menu == "⚠️ Sự cố":
 
-    st.subheader(
-        "⚠️ Quản lý sự cố"
-    )
+    st.subheader("⚠️ Quản lý sự cố")
 
     incidents = [
 
@@ -1103,25 +1101,15 @@ elif menu == "⚠️ Sự cố":
 
     st.divider()
 
-    st.markdown(
-        "### ➕ Báo cáo sự cố"
-    )
+    st.markdown("### ➕ Báo cáo sự cố")
 
-    with st.form(
-        "incident_form"
-    ):
+    with st.form("incident_form"):
 
-        title = st.text_input(
-            "Tên sự cố"
-        )
+        title = st.text_input("Tên sự cố")
 
-        tour = st.text_input(
-            "Tour"
-        )
+        tour = st.text_input("Tour")
 
-        description = st.text_area(
-            "Mô tả"
-        )
+        description = st.text_area("Mô tả")
 
         submit = st.form_submit_button(
             "🚨 Báo cáo sự cố"
@@ -1140,9 +1128,7 @@ elif menu == "⚠️ Sự cố":
 
 elif menu == "👨‍✈️ Hướng dẫn viên":
 
-    st.subheader(
-        "👨‍✈️ Quản lý hướng dẫn viên"
-    )
+    st.subheader("👨‍✈️ Quản lý hướng dẫn viên")
 
     guides = [
 
@@ -1200,9 +1186,9 @@ elif menu == "🤖 TourMate AI":
     </div>
     """, unsafe_allow_html=True)
 
-    # =====================================================
+    # -----------------------------------------------------
     # TRẠNG THÁI AI
-    # =====================================================
+    # -----------------------------------------------------
 
     if GROQ_AVAILABLE:
 
@@ -1222,17 +1208,17 @@ elif menu == "🤖 TourMate AI":
                 GROQ_ERROR
             )
 
-    # =====================================================
+    # -----------------------------------------------------
     # KHỞI TẠO LỊCH SỬ
-    # =====================================================
+    # -----------------------------------------------------
 
     if "tourmate_messages" not in st.session_state:
 
         st.session_state.tourmate_messages = []
 
-    # =====================================================
-    # NÚT XÓA CHAT
-    # =====================================================
+    # -----------------------------------------------------
+    # XÓA CHAT
+    # -----------------------------------------------------
 
     col1, col2 = st.columns([5, 1])
 
@@ -1247,9 +1233,9 @@ elif menu == "🤖 TourMate AI":
 
             st.rerun()
 
-    # =====================================================
+    # -----------------------------------------------------
     # HIỂN THỊ LỊCH SỬ
-    # =====================================================
+    # -----------------------------------------------------
 
     for message in st.session_state.tourmate_messages:
 
@@ -1261,9 +1247,9 @@ elif menu == "🤖 TourMate AI":
                 message["content"]
             )
 
-    # =====================================================
-    # GỢI Ý
-    # =====================================================
+    # -----------------------------------------------------
+    # GỢI Ý CÂU HỎI
+    # -----------------------------------------------------
 
     st.markdown(
         "### 💡 Bạn có thể hỏi"
@@ -1283,6 +1269,8 @@ elif menu == "🤖 TourMate AI":
                 "2 ngày 1 đêm cho đoàn 20 khách."
             )
 
+            st.rerun()
+
     with suggestion2:
 
         if st.button(
@@ -1294,6 +1282,8 @@ elif menu == "🤖 TourMate AI":
                 "Hãy viết bài thuyết minh khoảng 2 phút "
                 "về Tượng Chúa Kitô Vũng Tàu."
             )
+
+            st.rerun()
 
     with suggestion3:
 
@@ -1307,17 +1297,67 @@ elif menu == "🤖 TourMate AI":
                 "thì hướng dẫn viên nên xử lý như thế nào?"
             )
 
-    # =====================================================
+            st.rerun()
+
+    # -----------------------------------------------------
+    # THÊM THÊM GỢI Ý
+    # -----------------------------------------------------
+
+    suggestion4, suggestion5, suggestion6 = st.columns(3)
+
+    with suggestion4:
+
+        if st.button(
+            "📋 Tạo checklist tour",
+            use_container_width=True
+        ):
+
+            st.session_state["ai_question"] = (
+                "Hãy tạo checklist 10 việc hướng dẫn viên "
+                "cần kiểm tra trước khi khởi hành tour."
+            )
+
+            st.rerun()
+
+    with suggestion5:
+
+        if st.button(
+            "👥 Quản lý đoàn khách",
+            use_container_width=True
+        ):
+
+            st.session_state["ai_question"] = (
+                "Hãy hướng dẫn cách quản lý đoàn 30 khách "
+                "trong một tour du lịch."
+            )
+
+            st.rerun()
+
+    with suggestion6:
+
+        if st.button(
+            "🏨 Xử lý check-in",
+            use_container_width=True
+        ):
+
+            st.session_state["ai_question"] = (
+                "Hãy hướng dẫn quy trình check-in khách sạn "
+                "cho một đoàn khách du lịch."
+            )
+
+            st.rerun()
+
+    # -----------------------------------------------------
     # CHAT INPUT
-    # =====================================================
+    # -----------------------------------------------------
 
     question = st.chat_input(
         "💬 Nhập câu hỏi cho TourMate AI..."
     )
 
-    # =====================================================
-    # CÂU HỎI GỢI Ý
-    # =====================================================
+    # -----------------------------------------------------
+    # CÂU HỎI TỪ NÚT GỢI Ý
+    # -----------------------------------------------------
 
     if "ai_question" in st.session_state:
 
@@ -1325,15 +1365,11 @@ elif menu == "🤖 TourMate AI":
             "ai_question"
         )
 
-    # =====================================================
+    # -----------------------------------------------------
     # XỬ LÝ CHAT
-    # =====================================================
+    # -----------------------------------------------------
 
     if question:
-
-        # -------------------------------------------------
-        # Lưu câu hỏi
-        # -------------------------------------------------
 
         st.session_state.tourmate_messages.append(
             {
@@ -1342,25 +1378,13 @@ elif menu == "🤖 TourMate AI":
             }
         )
 
-        # -------------------------------------------------
-        # Hiển thị câu hỏi
-        # -------------------------------------------------
-
-        with st.chat_message(
-            "user"
-        ):
+        with st.chat_message("user"):
 
             st.markdown(
                 question
             )
 
-        # -------------------------------------------------
-        # Gọi AI
-        # -------------------------------------------------
-
-        with st.chat_message(
-            "assistant"
-        ):
+        with st.chat_message("assistant"):
 
             with st.spinner(
                 "🤖 TourMate AI đang suy nghĩ..."
@@ -1374,10 +1398,6 @@ elif menu == "🤖 TourMate AI":
             st.markdown(
                 answer
             )
-
-        # -------------------------------------------------
-        # Lưu câu trả lời
-        # -------------------------------------------------
 
         st.session_state.tourmate_messages.append(
             {
@@ -1401,53 +1421,95 @@ elif menu == "⚙️ Cài đặt":
     # MYSQL
     # =====================================================
 
+    st.markdown("### 🗄️ Trạng thái MySQL")
+
     if mysql_status:
 
-        st.markdown("""
-        <div class="success">
+        st.success(
+            "🟢 MySQL Aiven đang hoạt động bình thường."
+        )
 
-        🟢 MySQL Aiven đang hoạt động bình thường.
-
-        </div>
-        """, unsafe_allow_html=True)
+        st.info(
+            "SELECT 1 → Kết nối MySQL thành công."
+        )
 
     else:
 
-        st.markdown("""
-        <div class="warning">
+        st.error(
+            "🔴 Không thể kết nối MySQL Aiven."
+        )
 
-        🔴 Không thể kết nối MySQL Aiven.
+        if MYSQL_LAST_ERROR:
 
-        </div>
-        """, unsafe_allow_html=True)
+            st.markdown(
+                "#### 🔍 Lỗi thực tế từ MySQL"
+            )
+
+            st.code(
+                MYSQL_LAST_ERROR
+            )
+
+    # -----------------------------------------------------
+    # NÚT KIỂM TRA LẠI
+    # -----------------------------------------------------
+
+    if st.button(
+        "🔄 Kiểm tra lại kết nối MySQL",
+        use_container_width=True
+    ):
+
+        success, new_db, error = check_mysql_connection()
+
+        if success:
+
+            db = new_db
+            mysql_status = True
+            MYSQL_LAST_ERROR = ""
+
+            st.success(
+                "🟢 MySQL Aiven kết nối thành công!"
+            )
+
+            st.rerun()
+
+        else:
+
+            mysql_status = False
+            MYSQL_LAST_ERROR = error
+
+            st.error(
+                "🔴 Kết nối MySQL thất bại."
+            )
+
+            st.code(
+                error
+            )
 
     st.divider()
 
+    st.write("### 🔧 Thông tin Database")
+
     st.write(
-        "### 🗄️ Database"
+        f"**Host:** `{MYSQL_HOST}`"
     )
 
     st.write(
-        f"**Host:** {MYSQL_HOST}"
+        f"**Port:** `{MYSQL_PORT}`"
     )
 
     st.write(
-        f"**Port:** {MYSQL_PORT}"
+        f"**Database:** `{MYSQL_DATABASE}`"
     )
 
     st.write(
-        f"**Database:** {MYSQL_DATABASE}"
+        f"**User:** `{MYSQL_USER}`"
     )
 
-    st.write(
-        f"**User:** {MYSQL_USER}"
-    )
+    st.divider()
 
     # =====================================================
     # AI
     # =====================================================
-
-    st.divider()
 
     st.write(
         "### 🤖 AI Assistant"
@@ -1479,11 +1541,11 @@ elif menu == "⚙️ Cài đặt":
                 GROQ_ERROR
             )
 
+    st.divider()
+
     # =====================================================
     # THÔNG TIN HỆ THỐNG
     # =====================================================
-
-    st.divider()
 
     st.write(
         "### 📱 Thông tin hệ thống"
@@ -1494,7 +1556,7 @@ elif menu == "⚙️ Cài đặt":
     )
 
     st.write(
-        "**Phiên bản:** 1.3"
+        "**Phiên bản:** 1.4"
     )
 
     st.write(
